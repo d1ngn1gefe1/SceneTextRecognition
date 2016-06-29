@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 import math
 
 np.set_printoptions(threshold=np.nan)
@@ -67,8 +68,8 @@ def data_iterator(imgs, words, imgs_length, words_length, batch_size,
       for k in range(time_encoder):
         startWindowIdx = k*window_size
         endWindowIdx = min((k+1)*window_size, img.shape[0])
-        print img[startWindowIdx:endWindowIdx, :, :].shape
-        inputs_encoder[j, k, :] = img[startWindowIdx:endWindowIdx, :, :]
+        window = img[startWindowIdx:endWindowIdx, :, :]
+        inputs_encoder[j, k, :] = window.reshape((height, window_size, depth))
 
       inputs_length[j] = time_encoder
 
@@ -84,3 +85,28 @@ def data_iterator(imgs, words, imgs_length, words_length, batch_size,
       labels_mask[j, :words_length[idx]] = 1
 
     yield (inputs_encoder, inputs_decoder, labels, inputs_length, labels_mask)
+
+def variable_with_weight_decay(name, shape, stddev, wd):
+  """Helper to create an initialized Variable with weight decay.
+
+  Note that the Variable is initialized with a truncated normal distribution.
+  A weight decay is added only if one is specified.
+
+  Args:
+    name: name of the variable
+    shape: list of ints
+    stddev: standard deviation of a truncated Gaussian
+    wd: add L2Loss weight decay multiplied by this float. If None, weight
+        decay is not added for this Variable.
+
+  Returns:
+    Variable Tensor
+  """
+  var = tf.get_variable(name, shape,
+      tf.truncated_normal_initializer(stddev=stddev))
+
+  if wd is not None:
+    weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+    tf.add_to_collection('losses', weight_decay)
+
+  return var

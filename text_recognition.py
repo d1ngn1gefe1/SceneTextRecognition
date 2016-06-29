@@ -16,13 +16,12 @@ dataset_dir = '/home/local/ANT/zelunluo/Documents/IIIT5K/'
 # cv2.destroyAllWindows()'
 
 class Config():
-  lr = 1e-2
-  dropout = 0.9
+  lr = 1e-3
 
   batch_size = 32
   debug_size = 32
   num_epochs = 20000
-  window_size = 15
+  window_size = 32
   lstm_size = 64
   take = 12
   depth = 3
@@ -106,94 +105,56 @@ class DTRN_Model():
     self.labels_mask_placeholder = tf.placeholder(tf.float32, \
         shape=[self.config.batch_size, self.max_time_decoder])
 
-  def _variable_on_cpu(name, shape, initializer):
-    """Helper to create a Variable stored on CPU memory.
-
-    Args:
-      name: name of the variable
-      shape: list of ints
-      initializer: initializer for Variable
-
-    Returns:
-      Variable Tensor
-    """
-    with tf.device('/cpu:0'):
-      var = tf.get_variable(name, shape, initializer=initializer)
-
-    return var
-
-  def _variable_with_weight_decay(name, shape, stddev, wd):
-    """Helper to create an initialized Variable with weight decay.
-
-    Note that the Variable is initialized with a truncated normal distribution.
-    A weight decay is added only if one is specified.
-
-    Args:
-      name: name of the variable
-      shape: list of ints
-      stddev: standard deviation of a truncated Gaussian
-      wd: add L2Loss weight decay multiplied by this float. If None, weight
-          decay is not added for this Variable.
-
-    Returns:
-      Variable Tensor
-    """
-    var = _variable_on_cpu(name, shape,
-        tf.truncated_normal_initializer(stddev=stddev))
-
-    if wd is not None:
-      weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
-      tf.add_to_collection('losses', weight_decay)
-
-    return var
-
   def CNN(self, images):
+    # images: 4D tensor of size [batch_size, IMAGE_SIZE, IMAGE_SIZE, 3]
+
     with tf.variable_scope('conv1') as scope:
-      kernel = _variable_with_weight_decay('weights', shape=[5, 5, 3, 64],
-          stddev=1e-4, wd=0.0)
+      kernel = utils.variable_with_weight_decay('weights', \
+          shape=[5, 5, 3, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
+      biases = tf.get_variable('biases', [64], tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
       conv1 = tf.nn.relu(bias, name=scope.name)
 
     # pool1
-    pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
+    pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], \
         padding='SAME', name='pool1')
     # norm1
-    norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+    norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75, \
         name='norm1')
 
     # conv2
     with tf.variable_scope('conv2') as scope:
-      kernel = _variable_with_weight_decay('weights', shape=[5, 5, 64, 64],
-          stddev=1e-4, wd=0.0)
+      kernel = utils.variable_with_weight_decay('weights', \
+          shape=[5, 5, 64, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [64], tf.constant_initializer(0.1))
       bias = tf.nn.bias_add(conv, biases)
       conv2 = tf.nn.relu(bias, name=scope.name)
 
     # norm2
-    norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
+    norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75, \
         name='norm2')
     # pool2
-    pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
+    pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1], \
         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
 
     # local3
     with tf.variable_scope('local3') as scope:
       # Move everything into depth so we can perform a single matrix multiply.
-      reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
+      reshape = tf.reshape(pool2, \
+          [self.config.batch_size*self.max_time_encoder, -1])
       dim = reshape.get_shape()[1].value
-      weights = _variable_with_weight_decay('weights', shape=[dim, 384],
+      weights = utils._variable_with_weight_decay('weights', shape=[dim, 384], \
           stddev=0.04, wd=0.004)
-      biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [384], tf.constant_initializer(0.1))
       local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
 
     # local4
     with tf.variable_scope('local4') as scope:
-      weights = _variable_with_weight_decay('weights', shape=[384, 192],
+      weights = utils._variable_with_weight_decay('weights', shape=[384, 192], \
           stddev=0.04, wd=0.004)
-      biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [192], tf.constant_initializer(0.1))
       local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
 
     return local4
@@ -202,30 +163,35 @@ class DTRN_Model():
     self.cell = rnn_cell.BasicLSTMCell(self.config.lstm_size)
 
     with tf.variable_scope('LSTM') as scope:
-      # a training batch (inputs_encoder_placeholder) is of size
-      # batch_size x max_time_encoder x height x window_size x depth
-      # TODO: reshape it to batch_size x max_time_encoder x height x window_size x depth
+      # inputs_encoder_placeholder: a training batch of size batch_size
+      #                             x max_time_encoder x height x window_size
+      #                             x depth
+      # data_cnn: batch_size*max_time_encoder x height x window_size x depth
+      data_cnn = tf.reshape(self.inputs_encoder_placeholder, \
+          [self.config.batch_size*self.max_time_encoder, self.height, \
+          self.config.window_size, self.config.depth])
 
+      img_features = self.CNN(data_cnn)
+
+      # img_features: batch_size x max_time_encoder x 192
       # data_encoder: a length max_time_encoder list of inputs, each a tensor
-      # of shape [batch_size, input_size]
-      data_encoder = tf.split(1, self.max_time_encoder, \
-          self.inputs_encoder_placeholder)
+      #               of shape [batch_size, input_size]
+      data_encoder = tf.reshape(data_encoder, (self.config.batch_size, \
+          self.max_time_encoder, -1))
+      data_encoder = tf.split(1, self.max_time_encoder, data_encoder)
       data_encoder = [tf.squeeze(datum) for datum in data_encoder]
+
+      # inputs_decoder_placeholder: batch_size x max_time_decoder x 62
       # data_decoder: a length max_time_decoder list of inputs, each a tensor
-      # of shape [batch_size, input_size]
+      #               of shape [batch_size, input_size]
       data_decoder = tf.split(1, self.max_time_decoder, \
           self.inputs_decoder_placeholder)
       data_decoder = [tf.squeeze(datum) for datum in data_decoder]
-      #print data_encoder, data_decoder
 
       # encoder and decoder use the same RNN cell, but don't share parameters
       _, state_decoder = rnn.rnn(self.cell, data_encoder, dtype=tf.float32, \
           sequence_length=self.inputs_length_placeholder)
       outputs, _ = seq2seq.rnn_decoder(data_decoder, state_decoder, self.cell)
-    #   print len(data_decoder), data_decoder[0]
-    #   print state_decoder
-    #   print len(outputs), outputs[0]
-      #print outputs
 
       return outputs
 
