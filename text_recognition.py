@@ -112,7 +112,7 @@ class DTRN_Model():
       kernel = utils.variable_with_weight_decay('weights', \
           shape=[5, 5, 3, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = tf.get_variable('biases', [64], tf.constant_initializer(0.0))
+      biases = utils.variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
       conv1 = tf.nn.relu(bias, name=scope.name)
 
@@ -128,7 +128,7 @@ class DTRN_Model():
       kernel = utils.variable_with_weight_decay('weights', \
           shape=[5, 5, 64, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = tf.get_variable('biases', [64], tf.constant_initializer(0.1))
+      biases = utils.variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
       bias = tf.nn.bias_add(conv, biases)
       conv2 = tf.nn.relu(bias, name=scope.name)
 
@@ -145,16 +145,16 @@ class DTRN_Model():
       reshape = tf.reshape(pool2, \
           [self.config.batch_size*self.max_time_encoder, -1])
       dim = reshape.get_shape()[1].value
-      weights = utils._variable_with_weight_decay('weights', shape=[dim, 384], \
+      weights = utils.variable_with_weight_decay('weights', shape=[dim, 384], \
           stddev=0.04, wd=0.004)
-      biases = tf.get_variable('biases', [384], tf.constant_initializer(0.1))
+      biases = utils.variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
       local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
 
     # local4
     with tf.variable_scope('local4') as scope:
-      weights = utils._variable_with_weight_decay('weights', shape=[384, 192], \
+      weights = utils.variable_with_weight_decay('weights', shape=[384, 192], \
           stddev=0.04, wd=0.004)
-      biases = tf.get_variable('biases', [192], tf.constant_initializer(0.1))
+      biases = utils.variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
       local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
 
     return local4
@@ -176,7 +176,7 @@ class DTRN_Model():
       # img_features: batch_size x max_time_encoder x 192
       # data_encoder: a length max_time_encoder list of inputs, each a tensor
       #               of shape [batch_size, input_size]
-      data_encoder = tf.reshape(data_encoder, (self.config.batch_size, \
+      data_encoder = tf.reshape(img_features, (self.config.batch_size, \
           self.max_time_encoder, -1))
       data_encoder = tf.split(1, self.max_time_encoder, data_encoder)
       data_encoder = [tf.squeeze(datum) for datum in data_encoder]

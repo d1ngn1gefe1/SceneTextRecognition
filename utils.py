@@ -37,8 +37,6 @@ def index2char(index):
 def data_iterator(imgs, words, imgs_length, words_length, batch_size,
     window_size, num_epochs, max_time_encoder, max_time_decoder):
 
-  print words.shape
-
   num_examples = words.shape[0]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
   height = imgs.shape[1]
@@ -86,6 +84,20 @@ def data_iterator(imgs, words, imgs_length, words_length, batch_size,
 
     yield (inputs_encoder, inputs_decoder, labels, inputs_length, labels_mask)
 
+def variable_on_cpu(name, shape, initializer):
+  """Helper to create a Variable stored on CPU memory.
+  Args:
+    name: name of the variable
+    shape: list of ints
+    initializer: initializer for Variable
+  Returns:
+    Variable Tensor
+  """
+  with tf.device('/cpu:0'):
+    var = tf.get_variable(name, shape, initializer=initializer, \
+        dtype=tf.float32)
+  return var
+
 def variable_with_weight_decay(name, shape, stddev, wd):
   """Helper to create an initialized Variable with weight decay.
 
@@ -102,8 +114,8 @@ def variable_with_weight_decay(name, shape, stddev, wd):
   Returns:
     Variable Tensor
   """
-  var = tf.get_variable(name, shape,
-      tf.truncated_normal_initializer(stddev=stddev))
+  var = variable_on_cpu(name, shape, \
+      tf.truncated_normal_initializer(stddev=stddev, dtype=tf.float32))
 
   if wd is not None:
     weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
