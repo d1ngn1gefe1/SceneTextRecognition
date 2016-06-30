@@ -27,7 +27,7 @@ class Config():
   batch_size = 10
 
   # for debugging
-  debug_size = 100
+  debug_size = 40
   take = 8
 
 class DTRN_Model():
@@ -201,6 +201,7 @@ class DTRN_Model():
   def add_loss_op(self, outputs):
     loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder, \
         self.sequence_length_placeholder)
+    loss = tf.reduce_mean(loss)
     return loss
 
   def add_training_op(self, loss):
@@ -234,7 +235,6 @@ def main():
       ret = session.run([model.train_op, model.loss], feed_dict=feed)
 
       print 'loss: ', ret[1]
-      print '\n'
 
 if __name__ == '__main__':
   main()

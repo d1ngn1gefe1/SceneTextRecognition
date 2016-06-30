@@ -16,7 +16,9 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
   time = np.zeros(num_examples, dtype=np.int32)
   words_length = np.zeros(num_examples, dtype=np.int32)
 
-  num_skip = 0
+  num_rescale = 0
+  scales = []
+  scale_factor = 1.1
 
   for i in range(num_examples):
     img = cv2.imread(dataset_dir + data[i][0][0])
@@ -30,11 +32,17 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
     word_length = len(word)
 
     # Not enough time for target transition sequence
-    while word_length >= cur_time:
-      w *= 2
-      img = cv2.resize(img, (w, h))
-      cur_time = int(math.ceil((w-window_size)/float(stride)+1))
-      cur_time = max(cur_time, 1)
+    if word_length >= cur_time:
+      num_rescale += 1
+      scale = 1
+      while word_length >= cur_time:
+        w *= scale_factor
+        w = int(w)
+        scale *= scale_factor
+        img = cv2.resize(img, (w, h))
+        cur_time = int(math.ceil((w-window_size)/float(stride)+1))
+        cur_time = max(cur_time, 1)
+      scales.append(scale)
 
     img_windows = np.zeros((cur_time, height, window_size, depth))
     for j in range(cur_time):
@@ -50,8 +58,10 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
     words_embed.append(word_embed)
     words_length[i] = word_length
 
-  return (imgs, words_embed, time[:(num_examples-num_skip)], \
-      words_length[:(num_examples-num_skip)])
+  print 'rescale ', num_rescale, '/', num_examples, ' images'
+  print 'average scale factor: ', np.array(scales).mean()
+
+  return (imgs, words_embed, time, words_length)
 
 def process_and_save(dataset_dir, name, height, window_size, depth, \
     imgs, words_embed, time, words_length, max_time, max_words_length):
