@@ -1,0 +1,8 @@
+{
+  "dataset_dir": "/home/local/ANT/zelunluo/Documents/IIIT5K/",
+  "height": 32,
+  "window_size": 32,
+  "depth": 3,
+  "embed_size": 63,
+  "stride": 8
+}

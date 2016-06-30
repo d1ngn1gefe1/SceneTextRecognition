@@ -6,24 +6,25 @@ np.set_printoptions(threshold=np.nan)
 
 '''
     convert a character into an index
-    index 0 - 9: '0' - '9'
-    index 10 - 35: 'A' - 'Z'
-    index 36 - 61: 'a' - 'z'
+    index 1 - 10: '0' - '9'
+    index 11 - 36: 'A' - 'Z'
+    index 37 - 62: 'a' - 'z'
     ord('0') = 48, ord('9') = 57,
     ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
 '''
 def char2index(char):
   if ord(char) >= ord('0') and ord(char) <= ord('9'):
-    return ord(char)-ord('0')
+    return ord(char)-ord('0')+1
   elif ord(char) >= ord('A') and ord(char) <= ord('Z'):
-    return ord(char)-ord('A')+10
+    return ord(char)-ord('A')+11
   elif ord(char) >= ord('a') and ord(char) <= ord('z'):
-    return ord(char)-ord('a')+36
+    return ord(char)-ord('a')+37
   else:
     print 'char2index: invalid input'
     return -1
 
 def index2char(index):
+  index -= 1
   if index >= 0 and index <= 9:
     return chr(ord('0')+index)
   elif index >= 10 and index <= 35:
@@ -34,55 +35,48 @@ def index2char(index):
     print 'index2char: invalid input'
     return '?'
 
-def data_iterator(imgs, words, imgs_length, words_length, batch_size,
-    window_size, num_epochs, max_time_encoder, max_time_decoder):
+def data_iterator(imgs, words_embed, time, words_length, \
+    num_epochs, batch_size, max_time, max_words_length):
 
-  num_examples = words.shape[0]
+  num_examples = imgs.shape[0]
+  max_time = imgs.shape[1]
+  height = imgs.shape[2]
+  window_size = imgs.shape[3]
+  depth = imgs.shape[4]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
-  height = imgs.shape[1]
-  depth = imgs.shape[2]
-  print num_examples, num_steps, imgs.shape, batch_size, num_epochs, depth
+
+  inputs = np.zeros((max_time, batch_size, height, window_size, depth))
+  labels_indices = np.zeros([batch_size*max_words_length, 2], dtype='int32')
+  labels_values = np.zeros(batch_size*max_words_length, dtype='int32')
+  labels_shape = np.array([batch_size, max_words_length], dtype='int32')
+  sequence_length = np.zeros(batch_size, dtype='int32')
 
   for i in range(num_steps):
     startIdx = i*batch_size%num_examples
-    #endIdx = (i+1)*batch_size%num_examples
-
-    inputs_encoder = np.zeros((batch_size, max_time_encoder, height, \
-        window_size, depth))
-    inputs_decoder = np.zeros((batch_size, max_time_decoder, 62))
-    labels = np.zeros((batch_size, max_time_decoder, 62))
-    inputs_length = np.zeros(batch_size)
-    labels_mask = np.zeros((batch_size, max_time_decoder))
+    inputs.fill(0)
+    labels_indices.fill(0)
+    labels_values.fill(0)
+    sequence_length.fill(0)
+    N = 0
 
     for j in range(batch_size):
       idx = (startIdx+j)%num_examples
-      startColIdx = np.sum(imgs_length[:idx])
-      endColIdx = startColIdx+imgs_length[idx]
 
-      img = imgs[startColIdx:endColIdx, :, :]
+      inputs[:, j, :, :, :] = imgs[idx]
+      sequence_length[j] = time[idx]
 
-      time_encoder = imgs_length[idx]/window_size
+      for k in range(words_length[idx]):
+        labels_indices[N, 0] = j
+        labels_indices[N, 1] = k
+        labels_values[N] = words_embed[idx, k]
+        N += 1
 
-      for k in range(time_encoder):
-        startWindowIdx = k*window_size
-        endWindowIdx = min((k+1)*window_size, img.shape[0])
-        window = img[startWindowIdx:endWindowIdx, :, :]
-        inputs_encoder[j, k, :] = window.reshape((height, window_size, depth))
+      # sanity check
+    #   if words_length[idx] > time[idx]:
+    #     print 'Not enough time for target transition sequence!!!'
 
-      inputs_length[j] = time_encoder
-
-      word = words[idx]
-      #print word
-      for l, char in enumerate(word):
-        index = char2index(char)
-        if l != len(word)-1:
-          inputs_decoder[j, l, index] += 1
-        if l != 0:
-          labels[j, l-1, index] += 1
-
-      labels_mask[j, :words_length[idx]] = 1
-
-    yield (inputs_encoder, inputs_decoder, labels, inputs_length, labels_mask)
+    yield (inputs, labels_indices[:N], labels_values[:N], labels_shape, \
+        sequence_length)
 
 def variable_on_cpu(name, shape, initializer):
   """Helper to create a Variable stored on CPU memory.

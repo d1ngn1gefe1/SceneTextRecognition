@@ -4,51 +4,106 @@ import cv2
 import glob
 import os
 import h5py
+import json
+import utils
+import math
 
-dataset_dir = '/home/local/ANT/zelunluo/Documents/IIIT5K/'
-height = 32
-depth = 3
-buf_size = 500000
-
-def convert_and_save(data, name):
+def load_and_process(dataset_dir, data, height, window_size, depth, stride):
   num_examples = data.shape[0]
-  imgs = np.empty((buf_size, height, depth))
-  words = []
-  imgs_length = []
-  words_length = []
-  curIdx = 0
+
+  imgs = []
+  words_embed = []
+  time = np.zeros(num_examples, dtype=np.int32)
+  words_length = np.zeros(num_examples, dtype=np.int32)
+
+  num_skip = 0
 
   for i in range(num_examples):
     img = cv2.imread(dataset_dir + data[i][0][0])
     h = height
-    w = height*img.shape[1]/img.shape[0]
-    img = cv2.resize(img, (h, w))
+    w = int(round(height*img.shape[1]/float(img.shape[0])))
+    img = cv2.resize(img, (w, h))
     word = str(data[i][1][0])
 
-    imgs[curIdx:(curIdx+w), :, :] = img
-    curIdx += w
-    words.append(word)
-    imgs_length.append(w)
-    words_length.append(len(word))
+    cur_time = int(math.ceil((w-window_size)/float(stride)+1))
+    cur_time = max(cur_time, 1)
+    word_length = len(word)
 
-  imgs = imgs[:curIdx, :, :]
+    # Not enough time for target transition sequence
+    while word_length >= cur_time:
+      w *= 2
+      img = cv2.resize(img, (w, h))
+      cur_time = int(math.ceil((w-window_size)/float(stride)+1))
+      cur_time = max(cur_time, 1)
+
+    img_windows = np.zeros((cur_time, height, window_size, depth))
+    for j in range(cur_time):
+      start = j*stride
+      end = min(j*stride+window_size, w)
+      img_windows[j, :, :(end-start), :] = img[:, start:end, :]
+    imgs.append(img_windows)
+    time[i] = cur_time
+
+    word_embed = np.zeros(word_length)
+    for j, char in enumerate(word):
+      word_embed[j] = utils.char2index(char)
+    words_embed.append(word_embed)
+    words_length[i] = word_length
+
+  return (imgs, words_embed, time[:(num_examples-num_skip)], \
+      words_length[:(num_examples-num_skip)])
+
+def process_and_save(dataset_dir, name, height, window_size, depth, \
+    imgs, words_embed, time, words_length, max_time, max_words_length):
+  num_examples = len(imgs)
+  imgs_np = np.zeros((num_examples, max_time, height, window_size, depth), \
+      dtype=np.uint8)
+  words_embed_np = np.zeros((num_examples, max_words_length), dtype=np.uint8)
+
+  for i in range(num_examples):
+    imgs_np[i, :time[i], :, :, :] = imgs[i]
+    words_embed_np[i, :words_length[i]] = words_embed[i]
 
   filename = os.path.join(dataset_dir, name+'.hdf5')
   print 'Writing ' + filename
   with h5py.File(filename, 'w') as hf:
-    hf.create_dataset('imgs', data=imgs)
-    hf.create_dataset('words', data=words)
-    hf.create_dataset('imgs_length', data=imgs_length)
+    hf.create_dataset('imgs', data=imgs_np)
+    hf.create_dataset('words_embed', data=words_embed_np)
+    hf.create_dataset('time', data=time)
     hf.create_dataset('words_length', data=words_length)
 
 def main():
+  with open('config.json', 'r') as json_file:
+    json_data = json.load(json_file)
+    dataset_dir = json_data['dataset_dir']
+    height = json_data['height']
+    window_size = json_data['window_size']
+    depth = json_data['depth']
+    embed_size = json_data['embed_size']
+    stride = json_data['stride']
+
   train_dict = scipy.io.loadmat(dataset_dir + 'trainCharBound.mat')
   train_data = np.squeeze(train_dict['trainCharBound'])
   test_dict = scipy.io.loadmat(dataset_dir + 'testCharBound.mat')
   test_data = np.squeeze(test_dict['testCharBound'])
 
-  convert_and_save(train_data, 'train')
-  convert_and_save(test_data, 'test')
+  imgs_train, words_embed_train, time_train, words_length_train = \
+      load_and_process(dataset_dir, train_data, height, window_size, \
+      depth, stride)
+  imgs_test, words_embed_test, time_test, words_length_test = \
+      load_and_process(dataset_dir, test_data, height, window_size, \
+      depth, stride)
+
+  max_time = int(max(max(time_train), max(time_test)))
+  max_words_length = int(max(max(words_length_train), max(words_length_test)))
+
+  process_and_save(dataset_dir, 'train', height, window_size, depth, \
+      imgs_train, words_embed_train, time_train, words_length_train, \
+      max_time, max_words_length)
+
+  process_and_save(dataset_dir, 'test', height, window_size, depth, \
+      imgs_test, words_embed_test, time_test, words_length_test, \
+      max_time, max_words_length)
 
 if __name__ == '__main__':
   main()
