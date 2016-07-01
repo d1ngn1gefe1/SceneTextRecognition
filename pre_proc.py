@@ -13,8 +13,7 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
 
   imgs = []
   words_embed = []
-  time = np.zeros(num_examples, dtype=np.int32)
-  words_length = np.zeros(num_examples, dtype=np.int32)
+  time = np.zeros(num_examples, dtype=np.uint8)
 
   num_rescale = 0
   scales = []
@@ -52,35 +51,32 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
     imgs.append(img_windows)
     time[i] = cur_time
 
-    word_embed = np.zeros(word_length)
+    word_embed = np.zeros(word_length, dtype=np.uint8)
     for j, char in enumerate(word):
       word_embed[j] = utils.char2index(char)
     words_embed.append(word_embed)
-    words_length[i] = word_length
 
   print 'rescale ', num_rescale, '/', num_examples, ' images'
   print 'average scale factor: ', np.array(scales).mean()
 
-  return (imgs, words_embed, time, words_length)
+  return (imgs, words_embed, time)
 
-def process_and_save(dataset_dir, name, height, window_size, depth, \
-    imgs, words_embed, time, words_length, max_time, max_words_length):
+def process_and_save(dataset_dir, name, height, window_size, depth,
+    imgs, words_embed, time, max_time):
   num_examples = len(imgs)
-  imgs_np = np.zeros((num_examples, max_time, height, window_size, depth), \
-      dtype=np.uint8)
-  words_embed_np = np.zeros((num_examples, max_words_length), dtype=np.uint8)
 
+  imgs_np = np.zeros((num_examples, max_time, height, window_size, depth),
+      dtype=np.uint8)
   for i in range(num_examples):
     imgs_np[i, :time[i], :, :, :] = imgs[i]
-    words_embed_np[i, :words_length[i]] = words_embed[i]
 
   filename = os.path.join(dataset_dir, name+'.hdf5')
   print 'Writing ' + filename
   with h5py.File(filename, 'w') as hf:
     hf.create_dataset('imgs', data=imgs_np)
-    hf.create_dataset('words_embed', data=words_embed_np)
+    dt = h5py.special_dtype(vlen=np.dtype('uint8'))
+    hf.create_dataset('words_embed', data=words_embed, dtype=dt)
     hf.create_dataset('time', data=time)
-    hf.create_dataset('words_length', data=words_length)
 
 def main():
   with open('config.json', 'r') as json_file:
@@ -97,23 +93,18 @@ def main():
   test_dict = scipy.io.loadmat(dataset_dir + 'testCharBound.mat')
   test_data = np.squeeze(test_dict['testCharBound'])
 
-  imgs_train, words_embed_train, time_train, words_length_train = \
-      load_and_process(dataset_dir, train_data, height, window_size, \
-      depth, stride)
-  imgs_test, words_embed_test, time_test, words_length_test = \
-      load_and_process(dataset_dir, test_data, height, window_size, \
-      depth, stride)
+  imgs_train, words_embed_train, time_train = load_and_process(dataset_dir,
+      train_data, height, window_size, depth, stride)
+  imgs_test, words_embed_test, time_test = load_and_process(dataset_dir,
+      test_data, height, window_size, depth, stride)
 
   max_time = int(max(max(time_train), max(time_test)))
-  max_words_length = int(max(max(words_length_train), max(words_length_test)))
 
-  process_and_save(dataset_dir, 'train', height, window_size, depth, \
-      imgs_train, words_embed_train, time_train, words_length_train, \
-      max_time, max_words_length)
+  process_and_save(dataset_dir, 'train', height, window_size, depth,
+      imgs_train, words_embed_train, time_train, max_time)
 
-  process_and_save(dataset_dir, 'test', height, window_size, depth, \
-      imgs_test, words_embed_test, time_test, words_length_test, \
-      max_time, max_words_length)
+  process_and_save(dataset_dir, 'test', height, window_size, depth,
+      imgs_test, words_embed_test, time_test, max_time)
 
 if __name__ == '__main__':
   main()

@@ -4,15 +4,14 @@ import math
 
 np.set_printoptions(threshold=np.nan)
 
-'''
-    convert a character into an index
+def char2index(char):
+  """Convert a character into an index
     index 1 - 10: '0' - '9'
     index 11 - 36: 'A' - 'Z'
     index 37 - 62: 'a' - 'z'
     ord('0') = 48, ord('9') = 57,
     ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
-'''
-def char2index(char):
+  """
   if ord(char) >= ord('0') and ord(char) <= ord('9'):
     return ord(char)-ord('0')+1
   elif ord(char) >= ord('A') and ord(char) <= ord('Z'):
@@ -35,9 +34,18 @@ def index2char(index):
     print 'index2char: invalid input'
     return '?'
 
-def data_iterator(imgs, words_embed, time, words_length, \
-    num_epochs, batch_size, max_time, max_words_length):
+def dense2sparse(x, max_words_length):
+  x_ix = []
+  x_val = []
+  for batch_i, batch in enumerate(x):
+    for time, val in enumerate(batch):
+      x_ix.append([batch_i, time])
+      x_val.append(val)
+  x_shape = [len(x), max_words_length]
 
+  return (x_ix, x_val, x_shape)
+
+def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
   height = imgs.shape[2]
@@ -45,38 +53,37 @@ def data_iterator(imgs, words_embed, time, words_length, \
   depth = imgs.shape[4]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
 
+  max_words_length = 0
+  for word_embed in words_embed:
+    word_length = word_embed.shape[0]
+    if max_words_length < word_length:
+      max_words_length = word_length
+
   inputs = np.zeros((max_time, batch_size, height, window_size, depth))
-  labels_indices = np.zeros([batch_size*max_words_length, 2], dtype='int32')
-  labels_values = np.zeros(batch_size*max_words_length, dtype='int32')
-  labels_shape = np.array([batch_size, max_words_length], dtype='int32')
   sequence_length = np.zeros(batch_size, dtype='int32')
+  labels = [] # a list of numpy arrays
 
   for i in range(num_steps):
+    labels = []
+
     startIdx = i*batch_size%num_examples
-    inputs.fill(0)
-    labels_indices.fill(0)
-    labels_values.fill(0)
-    sequence_length.fill(0)
-    N = 0
+    endIdx = (i+1)*batch_size%num_examples
 
-    for j in range(batch_size):
-      idx = (startIdx+j)%num_examples
+    if startIdx < endIdx:
+      inputs = imgs[startIdx:endIdx].swapaxes(0, 1)
+      sequence_length = time[startIdx:endIdx]
+      labels = words_embed[startIdx:endIdx]
+    elif endIdx == 0:
+      inputs = imgs[startIdx:].swapaxes(0, 1)
+      sequence_length = time[startIdx:]
+      labels = words_embed[startIdx:]
+    else:
+      inputs = np.concatenate(imgs[startIdx:], imgs[:endIdx]).swapaxes(0, 1)
+      sequence_length = np.concatenate(time[startIdx:], time[:endIdx])
+      labels = words_embed[startIdx:]+words_embed[:endIdx]
 
-      inputs[:, j, :, :, :] = imgs[idx]
-      sequence_length[j] = time[idx]
-
-      for k in range(words_length[idx]):
-        labels_indices[N, 0] = j
-        labels_indices[N, 1] = k
-        labels_values[N] = words_embed[idx, k]
-        N += 1
-
-      # sanity check
-    #   if words_length[idx] > time[idx]:
-    #     print 'Not enough time for target transition sequence!!!'
-
-    yield (inputs, labels_indices[:N], labels_values[:N], labels_shape, \
-        sequence_length)
+    labels_sparse = dense2sparse(labels, max_words_length)
+    yield (inputs, labels_sparse, sequence_length)
 
 def variable_on_cpu(name, shape, initializer):
   """Helper to create a Variable stored on CPU memory.
@@ -88,7 +95,7 @@ def variable_on_cpu(name, shape, initializer):
     Variable Tensor
   """
   with tf.device('/cpu:0'):
-    var = tf.get_variable(name, shape, initializer=initializer, \
+    var = tf.get_variable(name, shape, initializer=initializer,
         dtype=tf.float32)
   return var
 
@@ -108,7 +115,7 @@ def variable_with_weight_decay(name, shape, stddev, wd):
   Returns:
     Variable Tensor
   """
-  var = variable_on_cpu(name, shape, \
+  var = variable_on_cpu(name, shape,
       tf.truncated_normal_initializer(stddev=stddev, dtype=tf.float32))
 
   if wd is not None:
