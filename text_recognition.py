@@ -7,8 +7,23 @@ import math
 import os
 import time
 import json
+import logging
+import sys
 
-debug = True
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(message)s')
+
+fh = logging.FileHandler('debug.log')
+fh.setLevel(logging.INFO)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
 class Config():
   """
   Class to hold config values
@@ -22,24 +37,24 @@ class Config():
       self.depth = json_data['depth']
       self.embed_size = json_data['embed_size']
       self.stride = json_data['stride']
-
-  lr = 1e-2
-  lstm_size = 64
-  num_epochs = 20000
-  batch_size = 5
-
-  # for debugging
-  debug_size = 20
-  take = 8
+      self.lr = json_data['lr']
+      self.lstm_size = json_data['lstm_size']
+      self.num_epochs = json_data['num_epochs']
+      self.batch_size = json_data['batch_size']
+      self.debug = json_data['debug']
+      self.debug_size = json_data['debug_size']
+      self.ckpt_dir = json_data['ckpt_dir']
+      self.save_every = json_data['save_every']
 
 class DTRN_Model():
   def __init__(self, config):
     self.config = config
-    self.load_data(debug)
+    self.load_data(self.config.debug)
     self.add_placeholders()
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
+    self.pred = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False):
@@ -52,19 +67,22 @@ class DTRN_Model():
     filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
     filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
 
-    f_train = h5py.File(filename_train, 'r')
-    f_test = h5py.File(filename_test, 'r')
-
     # load train data
+    f_train = h5py.File(filename_train, 'r')
     self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
     self.words_embed_train = f_train.get('words_embed')[()].tolist()
     self.time_train = np.array(f_train.get('time'), dtype=np.uint8)
+    logger.info('loading training data (%d examples)', self.imgs_train.shape[0])
+    f_train.close()
 
+    f_test = h5py.File(filename_test, 'r')
     self.imgs_test = np.array(f_test.get('imgs'), dtype=np.uint8)
     self.words_embed_test = f_test.get('words_embed')[()].tolist()
     self.time_test = np.array(f_test.get('time'), dtype=np.uint8)
+    logger.info('loading test data (%d examples)', self.imgs_test.shape[0])
+    f_test.close()
 
-    if debug:
+    if self.config.debug:
       self.imgs_train = self.imgs_train[:self.config.debug_size]
       self.words_embed_train = self.words_embed_train[:self.config.debug_size]
       self.time_train = self.time_train[:self.config.debug_size]
@@ -74,14 +92,10 @@ class DTRN_Model():
       self.time_test = self.time_test[:self.config.debug_size]
 
     self.max_time = max(np.amax(self.time_train), np.amax(self.time_test))
-    print 'max_time = ', self.max_time
 
-    if debug:
+    if self.config.debug:
       self.imgs_train = self.imgs_train[:, :self.max_time]
       self.imgs_test = self.imgs_test[:, :self.max_time]
-
-    f_train.close()
-    f_test.close()
 
   def add_placeholders(self):
     """
@@ -89,12 +103,12 @@ class DTRN_Model():
     Returns:
 
     """
-    # max_time x batch_size x height x width x depth
+    # batch_size x max_time x height x width x depth
     self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[self.max_time, self.config.batch_size, self.config.height,
+        shape=[self.config.batch_size, self.max_time, self.config.height,
         self.config.window_size, self.config.depth])
 
-    # max_time x batch_size x embed_size (63)
+    # batch_size x max_time x embed_size (63)
     self.labels_placeholder = tf.sparse_placeholder(tf.int32)
 
     # batch_size
@@ -174,28 +188,23 @@ class DTRN_Model():
         state_is_tuple=True)
 
     with tf.variable_scope('LSTM') as scope:
-      # inputs_placeholder: max_time x batch_size x height x window_size x depth
-      # data_cnn: max_time*batch_size x height x window_size x depth
+      # inputs_placeholder: batch_size x max_time x height x window_size x depth
+      # data_cnn: batch_size*max_time x height x window_size x depth
       data_cnn = tf.reshape(self.inputs_placeholder,
           [self.max_time*self.config.batch_size, self.config.height,
           self.config.window_size, self.config.depth])
 
       img_features = self.CNN(data_cnn)
 
-      # img_features: max_time*batch_size x feature_size (192)
-      # data_encoder: a length max_time list, each a tensor of shape
-      #               [batch_size, feature_size]
-      data_encoder = tf.reshape(img_features, (self.max_time,
-          self.config.batch_size, -1))
-      data_encoder = tf.split(0, self.max_time, data_encoder)
-      data_encoder = [tf.squeeze(datum) for datum in data_encoder]
+      # img_features: batch_size*max_time x feature_size (192)
+      # data_encoder: batch_size x max_time x feature_size
+      data_encoder = tf.reshape(img_features, (self.config.batch_size,
+          self.max_time, -1))
 
-      rnn_outputs, _, _ = tf.nn.bidirectional_rnn(self.cell, self.cell,
-          data_encoder, sequence_length=self.sequence_length_placeholder,
-          dtype=tf.float32)
+      rnn_outputs, _ = tf.nn.dynamic_rnn(self.cell, data_encoder,
+          sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
 
-      # rnn_outputs: a length max_time list, each a tensor of shape
-      #              [batch_size, 2*lstm_size]
+      # rnn_outputs: batch_size x max_time x lstm_size
       return rnn_outputs
 
   def add_projection(self, rnn_outputs):
@@ -208,15 +217,17 @@ class DTRN_Model():
 
     """
     with tf.variable_scope('Projection'):
-      W = tf.get_variable('Weight', [2*self.config.lstm_size,
+      W = tf.get_variable('Weight', [self.config.lstm_size,
           self.config.embed_size],
           initializer=tf.random_normal_initializer(0.0, 1e-3))
       b = tf.get_variable('Bias', [self.config.embed_size],
           initializer=tf.constant_initializer(0.0))
-      outputs = [tf.matmul(rnn_output, W)+b for rnn_output in rnn_outputs]
 
-      # pack a list of rank-2 tensors to a rank-3 tensor
-      outputs = tf.pack(outputs)
+      rnn_outputs_reshape = tf.reshape(rnn_outputs,
+          (self.config.batch_size*self.max_time, self.config.lstm_size))
+      outputs = tf.matmul(rnn_outputs_reshape, W)+b
+      outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
+      outputs = tf.transpose(outputs, perm=[1, 0, 2])
     return outputs
 
   def add_loss_op(self, outputs):
@@ -229,9 +240,15 @@ class DTRN_Model():
 
     """
     loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
-        self.sequence_length_placeholder)
+        self.sequence_length_placeholder, ctc_merge_repeated=False)
     loss = tf.reduce_mean(loss)
     return loss
+
+  def add_decoder(self, outputs):
+    self.decoded, self.log_probs = tf.contrib.ctc.ctc_greedy_decoder(outputs,
+        self.sequence_length_placeholder, merge_repeated=False)
+    pred = tf.sparse_tensor_to_dense(self.decoded[0])
+    return pred
 
   def add_training_op(self, loss):
     """
@@ -242,7 +259,7 @@ class DTRN_Model():
     Returns:
 
     """
-    optimizer = tf.train.AdamOptimizer(self.config.lr)
+    optimizer = tf.train.RMSPropOptimizer(self.config.lr)
     train_op = optimizer.minimize(loss)
     return train_op
 
@@ -253,8 +270,8 @@ def main():
   """
   config = Config()
   model = DTRN_Model(config)
-
   init = tf.initialize_all_variables()
+  saver = tf.train.Saver()
 
   with tf.Session() as session:
     session.run(init)
@@ -262,16 +279,29 @@ def main():
     iterator = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time)
+    num_examples = model.imgs_train.shape[0]
+    num_steps = int(math.ceil(
+        num_examples*model.config.num_epochs/model.config.batch_size))
 
-    for step, (inputs, labels_sparse, sequence_length) in enumerate(iterator):
+    last_epoch = -1
+    for step, (inputs, labels_sparse, sequence_length,
+        epoch) in enumerate(iterator):
+      logger.info('epoch %d/%d, step %d/%d', epoch, model.config.num_epochs,
+          step, num_steps)
 
       feed = {model.inputs_placeholder: inputs,
               model.labels_placeholder: labels_sparse,
               model.sequence_length_placeholder: sequence_length}
 
+      ret = session.run([model.loss, model.pred, model.outputs, \
+          model.log_probs], feed_dict=feed)
+      logger.info('loss: %f', ret[0])
       ret = session.run([model.train_op, model.loss], feed_dict=feed)
 
-      print 'loss: ', ret[1]
+      if epoch%model.config.save_every == 0 and last_epoch != epoch:
+        save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')
+        logger.info('model saved in file: %s', save_path)
+        last_epoch = epoch
 
 if __name__ == '__main__':
   main()

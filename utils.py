@@ -6,18 +6,18 @@ np.set_printoptions(threshold=np.nan)
 
 def char2index(char):
   """Convert a character into an index
-    index 1 - 10: '0' - '9'
-    index 11 - 36: 'A' - 'Z'
-    index 37 - 62: 'a' - 'z'
+    index 0 - 9: '0' - '9'
+    index 10 - 35: 'A' - 'Z'
+    index 36 - 61: 'a' - 'z'
     ord('0') = 48, ord('9') = 57,
     ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
   """
   if ord(char) >= ord('0') and ord(char) <= ord('9'):
-    return ord(char)-ord('0')+1
+    return ord(char)-ord('0')
   elif ord(char) >= ord('A') and ord(char) <= ord('Z'):
-    return ord(char)-ord('A')+11
+    return ord(char)-ord('A')+10
   elif ord(char) >= ord('a') and ord(char) <= ord('z'):
-    return ord(char)-ord('a')+37
+    return ord(char)-ord('a')+36
   else:
     print 'char2index: invalid input'
     return -1
@@ -106,20 +106,22 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     endIdx = (i+1)*batch_size%num_examples
 
     if startIdx < endIdx:
-      inputs = imgs[startIdx:endIdx].swapaxes(0, 1)
+      inputs = imgs[startIdx:endIdx]
       sequence_length = time[startIdx:endIdx]
       labels = words_embed[startIdx:endIdx]
     elif endIdx == 0:
-      inputs = imgs[startIdx:].swapaxes(0, 1)
+      inputs = imgs[startIdx:]
       sequence_length = time[startIdx:]
       labels = words_embed[startIdx:]
     else:
-      inputs = np.concatenate(imgs[startIdx:], imgs[:endIdx]).swapaxes(0, 1)
-      sequence_length = np.concatenate(time[startIdx:], time[:endIdx])
+      inputs = np.concatenate((imgs[startIdx:], imgs[:endIdx]))
+      sequence_length = np.concatenate((time[startIdx:], time[:endIdx]))
       labels = words_embed[startIdx:]+words_embed[:endIdx]
 
     labels_sparse = dense2sparse(labels, max_words_length)
-    yield (inputs, labels_sparse, sequence_length)
+
+    epoch = i/num_steps
+    yield (inputs, labels_sparse, sequence_length, epoch)
 
 def variable_on_cpu(name, shape, initializer):
   """Helper to create a Variable stored on CPU memory.

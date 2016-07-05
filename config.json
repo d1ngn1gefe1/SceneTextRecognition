@@ -4,5 +4,13 @@
   "window_size": 32,
   "depth": 3,
   "embed_size": 63,
-  "stride": 8
+  "stride": 8,
+  "lr": 1e-4,
+  "lstm_size": 128,
+  "num_epochs": 20000,
+  "batch_size": 64,
+  "debug": false,
+  "debug_size": 200,
+  "ckpt_dir": "/home/local/ANT/zelunluo/Documents/checkpoint/",
+  "save_every": 1
 }
