@@ -9,6 +9,20 @@ import utils
 import math
 
 def load_and_process(dataset_dir, data, height, window_size, depth, stride):
+  """
+  Args:
+      dataset_dir:
+      data:
+      height:
+      window_size:
+      depth:
+      stride:
+
+  Returns:
+      imgs
+      words_embeded
+      time
+  """
   num_examples = data.shape[0]
 
   imgs = []
@@ -63,6 +77,21 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
 
 def process_and_save(dataset_dir, name, height, window_size, depth,
     imgs, words_embed, time, max_time):
+  """
+  Args:
+      dataset_dir:
+      name:
+      height:
+      window_size:
+      depth:
+      imgs:
+      words_embed:
+      time:
+      max_time:
+
+  Returns:
+    image data in hdf5 file
+  """
   num_examples = len(imgs)
 
   imgs_np = np.zeros((num_examples, max_time, height, window_size, depth),
@@ -79,6 +108,11 @@ def process_and_save(dataset_dir, name, height, window_size, depth,
     hf.create_dataset('time', data=time)
 
 def main():
+  """
+  Read data in (IIT5K format), convert/process and save it to hdf5 format
+  Returns:
+
+  """
   with open('config.json', 'r') as json_file:
     json_data = json.load(json_file)
     dataset_dir = json_data['dataset_dir']
