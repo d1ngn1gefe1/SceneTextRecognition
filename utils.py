@@ -82,7 +82,9 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
       labels = words_embed[startIdx:]+words_embed[:endIdx]
 
     labels_sparse = dense2sparse(labels, max_words_length)
-    yield (inputs, labels_sparse, sequence_length)
+
+    epoch = i/num_steps
+    yield (inputs, labels_sparse, sequence_length, epoch)
 
 def variable_on_cpu(name, shape, initializer):
   """Helper to create a Variable stored on CPU memory.
