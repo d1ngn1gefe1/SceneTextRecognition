@@ -25,9 +25,6 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 class Config():
-  """
-  Class to hold config values
-  """
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
@@ -61,12 +58,6 @@ class DTRN_Model():
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False):
-    """
-    Args:
-        debug:
-    Returns:
-
-    """
     filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
     filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
 
@@ -101,11 +92,6 @@ class DTRN_Model():
 
 
   def add_placeholders(self):
-    """
-
-    Returns:
-
-    """
     # batch_size x max_time x height x width x depth
     self.inputs_placeholder = tf.placeholder(tf.float32,
         shape=[self.config.batch_size, self.max_time, self.config.height,
@@ -119,12 +105,7 @@ class DTRN_Model():
         shape=[self.config.batch_size])
 
   def CNN(self, images):
-    """
-    Args:
-        images: 4D tensor of size [batch_size, height, width, depth]
-    Returns:
-
-    """
+    # images: 4D tensor of size [batch_size, height, width, depth]
 
     with tf.variable_scope('conv1') as scope:
       kernel = utils.variable_with_weight_decay('weights',
@@ -182,11 +163,6 @@ class DTRN_Model():
     return local4
 
   def add_model(self):
-    """
-
-    Returns:
-
-    """
     self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
         state_is_tuple=True)
 
@@ -208,17 +184,9 @@ class DTRN_Model():
           sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
 
       # rnn_outputs: batch_size x max_time x lstm_size
-      return rnn_outputs
+      return rnn_outputsx
 
   def add_projection(self, rnn_outputs):
-    """
-    Purposes: ?
-    Args:
-        rnn_outputs:
-
-    Returns:
-
-    """
     with tf.variable_scope('Projection'):
       W = tf.get_variable('Weight', [self.config.lstm_size,
           self.config.embed_size],
@@ -236,14 +204,6 @@ class DTRN_Model():
     return outputs
 
   def add_loss_op(self, outputs):
-    """
-    Add loss op to the model
-    Args:
-        outputs:
-
-    Returns:
-
-    """
     loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
         self.sequence_length_placeholder, ctc_merge_repeated=False)
     loss = tf.reduce_mean(loss)
@@ -256,23 +216,11 @@ class DTRN_Model():
     return pred
 
   def add_training_op(self, loss):
-    """
-    Add training op to the model
-    Args:
-        loss: the loss operator
-
-    Returns:
-
-    """
     optimizer = tf.train.RMSPropOptimizer(self.config.lr)
     train_op = optimizer.minimize(loss)
     return train_op
 
 def main():
-  """
-  Training (?)
-  Returns:
-  """
   config = Config()
   model = DTRN_Model(config)
   init = tf.initialize_all_variables()
