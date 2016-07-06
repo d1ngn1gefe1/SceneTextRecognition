@@ -8,9 +8,12 @@
   "lr": 1e-4,
   "lstm_size": 128,
   "num_epochs": 20000,
-  "batch_size": 64,
-  "debug": false,
-  "debug_size": 200,
+  "batch_size": 32,
+  "debug": true,
+  "debug_size": 50,
+  "load_ckpt": true,
   "ckpt_dir": "/home/local/ANT/zelunluo/Documents/checkpoint/",
-  "save_every": 1
+  "save_every_n_steps": 15,
+  "test_every_n_steps": 1,
+  "test_size": 150
 }

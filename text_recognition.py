@@ -40,8 +40,11 @@ class Config():
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
+      self.load_ckpt = json_data['load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
-      self.save_every = json_data['save_every']
+      self.save_every_n_steps = json_data['save_every_n_steps']
+      self.test_every_n_steps = json_data['test_every_n_steps']
+      self.test_size = json_data['test_size']
 
 class DTRN_Model():
   def __init__(self, config):
@@ -78,15 +81,15 @@ class DTRN_Model():
       self.words_embed_train = self.words_embed_train[:self.config.debug_size]
       self.time_train = self.time_train[:self.config.debug_size]
 
-      self.imgs_test = self.imgs_test[:self.config.debug_size]
-      self.words_embed_test = self.words_embed_test[:self.config.debug_size]
-      self.time_test = self.time_test[:self.config.debug_size]
+    if self.imgs_test.shape[0] > self.config.test_size:
+      self.imgs_test = self.imgs_test[:self.config.test_size]
+      self.words_embed_test = self.words_embed_test[:self.config.test_size]
+      self.time_test = self.time_test[:self.config.test_size]
 
     self.max_time = max(np.amax(self.time_train), np.amax(self.time_test))
+    self.imgs_train = self.imgs_train[:, :self.max_time]
+    self.imgs_test = self.imgs_test[:, :self.max_time]
 
-    if self.config.debug:
-      self.imgs_train = self.imgs_train[:, :self.max_time]
-      self.imgs_test = self.imgs_test[:, :self.max_time]
 
   def add_placeholders(self):
     # batch_size x max_time x height x width x depth
@@ -196,6 +199,8 @@ class DTRN_Model():
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
+
+    # outputs: max_time x batch_size x embed_size
     return outputs
 
   def add_loss_op(self, outputs):
@@ -205,9 +210,9 @@ class DTRN_Model():
     return loss
 
   def add_decoder(self, outputs):
-    self.decoded, self.log_probs = tf.contrib.ctc.ctc_greedy_decoder(outputs,
+    decoded, _ = tf.contrib.ctc.ctc_greedy_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
-    pred = tf.sparse_tensor_to_dense(self.decoded[0])
+    pred = tf.sparse_tensor_to_dense(decoded[0])
     return pred
 
   def add_training_op(self, loss):
@@ -223,17 +228,24 @@ def main():
 
   with tf.Session() as session:
     session.run(init)
+    if model.config.load_ckpt:
+      saver.restore(session, model.config.ckpt_dir+'model.ckpt')
+      logger.info('model restored')
 
-    iterator = utils.data_iterator(
+    iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time)
+
+    iterator_test = utils.data_iterator(
+        model.imgs_test, model.words_embed_test, model.time_test, 1,
+        model.config.test_size, model.max_time)
+
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
         num_examples*model.config.num_epochs/model.config.batch_size))
 
-    last_epoch = -1
     for step, (inputs, labels_sparse, sequence_length,
-        epoch) in enumerate(iterator):
+        epoch) in enumerate(iterator_train):
       logger.info('epoch %d/%d, step %d/%d', epoch, model.config.num_epochs,
           step, num_steps)
 
@@ -241,15 +253,16 @@ def main():
               model.labels_placeholder: labels_sparse,
               model.sequence_length_placeholder: sequence_length}
 
-      ret = session.run([model.loss, model.pred, model.outputs, \
-          model.log_probs], feed_dict=feed)
-      logger.info('loss: %f', ret[0])
       ret = session.run([model.train_op, model.loss], feed_dict=feed)
+      logger.info('loss: %f', ret[1])
 
-      if epoch%model.config.save_every == 0 and last_epoch != epoch:
+      if step%model.config.save_every_n_steps == 0:
         save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')
         logger.info('model saved in file: %s', save_path)
-        last_epoch = epoch
+
+      if step%model.config.test_every_n_steps == 0:
+        ret = session.run([model.pred], feed_dict=feed)
+        print ret[0]
 
 if __name__ == '__main__':
   main()

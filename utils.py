@@ -29,6 +29,8 @@ def index2char(index):
     return chr(ord('A')+index-10)
   elif index >= 36 and index <= 61:
     return chr(ord('a')+index-36)
+  elif index == 62:
+    return '_'
   else:
     print 'index2char: invalid input'
     return '?'
@@ -43,6 +45,16 @@ def dense2sparse(x, max_words_length):
   x_shape = [len(x), max_words_length]
 
   return (x_ix, x_val, x_shape)
+
+# def outputs2words(outputs):
+#   """
+#   Args:
+#     outputs: max_time x batch_size x embed_size
+#   """
+#   words = []
+#   for i in range(outputs.shape[1]):
+#     indices = np.argmax(outputs[:, i, :], axis=1)
+
 
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
   num_examples = imgs.shape[0]
@@ -83,7 +95,7 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
 
     labels_sparse = dense2sparse(labels, max_words_length)
 
-    epoch = i/num_steps
+    epoch = i*batch_size/num_examples
     yield (inputs, labels_sparse, sequence_length, epoch)
 
 def variable_on_cpu(name, shape, initializer):
