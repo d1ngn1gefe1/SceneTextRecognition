@@ -184,7 +184,7 @@ class DTRN_Model():
           sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
 
       # rnn_outputs: batch_size x max_time x lstm_size
-      return rnn_outputsx
+      return rnn_outputs
 
   def add_projection(self, rnn_outputs):
     with tf.variable_scope('Projection'):
