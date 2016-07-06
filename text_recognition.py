@@ -111,8 +111,8 @@ class DTRN_Model():
       kernel = utils.variable_with_weight_decay('weights',
           shape=[5, 5, 3, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = utils.variable_on_cpu('biases', [64],
-          tf.constant_initializer(0.0))
+      biases = tf.get_variable('biases', [64],
+          initializer=tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
       conv1 = tf.nn.relu(bias, name=scope.name)
 
@@ -128,8 +128,8 @@ class DTRN_Model():
       kernel = utils.variable_with_weight_decay('weights',
           shape=[5, 5, 64, 64], stddev=1e-4, wd=0.0)
       conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = utils.variable_on_cpu('biases', [64],
-          tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [64],
+          initializer=tf.constant_initializer(0.1))
       bias = tf.nn.bias_add(conv, biases)
       conv2 = tf.nn.relu(bias, name=scope.name)
 
@@ -148,16 +148,16 @@ class DTRN_Model():
       dim = reshape.get_shape()[1].value
       weights = utils.variable_with_weight_decay('weights', shape=[dim, 384],
           stddev=0.04, wd=0.004)
-      biases = utils.variable_on_cpu('biases', [384],
-          tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [384],
+          initializer=tf.constant_initializer(0.1))
       local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
 
     # local4
     with tf.variable_scope('local4') as scope:
       weights = utils.variable_with_weight_decay('weights', shape=[384, 192],
           stddev=0.04, wd=0.004)
-      biases = utils.variable_on_cpu('biases', [192],
-          tf.constant_initializer(0.1))
+      biases = tf.get_variable('biases', [192],
+          initializer=tf.constant_initializer(0.1))
       local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
 
     return local4

@@ -23,15 +23,6 @@ def char2index(char):
     return -1
 
 def index2char(index):
-  """
-  From index to actual character
-  Args:
-      index:
-
-  Returns:
-
-  """
-  index -= 1
   if index >= 0 and index <= 9:
     return chr(ord('0')+index)
   elif index >= 10 and index <= 35:
@@ -45,17 +36,6 @@ def index2char(index):
     return '?'
 
 def dense2sparse(x, max_words_length):
-  """
-  Purposes: ?
-  Args:
-      x:
-      max_words_length:
-
-  Returns:
-      x_ix: ?
-      x_val: ?
-      x_shape: ?
-  """
   x_ix = []
   x_val = []
   for batch_i, batch in enumerate(x):
@@ -77,21 +57,6 @@ def dense2sparse(x, max_words_length):
 
 
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
-  """
-  Purposes: ?
-  Args:
-      imgs:
-      words_embed:
-      time:
-      num_epochs:
-      batch_size:
-      max_time: not used?
-
-  Returns:
-    inputs:
-    labels_sparse:
-     sequence_length:
-  """
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
   height = imgs.shape[2]
@@ -105,11 +70,9 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     if max_words_length < word_length:
       max_words_length = word_length
 
-  #-- not needed?
   inputs = np.zeros((max_time, batch_size, height, window_size, depth))
   sequence_length = np.zeros(batch_size, dtype='int32')
   labels = [] # a list of numpy arrays
-  #---
 
   for i in range(num_steps):
     labels = []
@@ -135,20 +98,6 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     epoch = i*batch_size/num_examples
     yield (inputs, labels_sparse, sequence_length, epoch)
 
-def variable_on_cpu(name, shape, initializer):
-  """Helper to create a Variable stored on CPU memory.
-  Args:
-    name: name of the variable
-    shape: list of ints
-    initializer: initializer for Variable
-  Returns:
-    Variable Tensor
-  """
-  with tf.device('/cpu:0'):
-    var = tf.get_variable(name, shape, initializer=initializer,
-        dtype=tf.float32)
-  return var
-
 def variable_with_weight_decay(name, shape, stddev, wd):
   """Helper to create an initialized Variable with weight decay.
 
@@ -165,8 +114,8 @@ def variable_with_weight_decay(name, shape, stddev, wd):
   Returns:
     Variable Tensor
   """
-  var = variable_on_cpu(name, shape,
-      tf.truncated_normal_initializer(stddev=stddev, dtype=tf.float32))
+  var = tf.get_variable(name, shape,
+      initializer=tf.truncated_normal_initializer(stddev=stddev))
 
   if wd is not None:
     weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
