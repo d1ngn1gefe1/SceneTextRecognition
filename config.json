@@ -1,5 +1,5 @@
 {
-  "dataset_dir": "/home/local/ANT/zelunluo/Documents/IIIT5K/",
+  "dataset_dir": "/home/local/ANT/zelunluo/IIIT5K/",
   "height": 32,
   "window_size": 32,
   "depth": 3,
@@ -9,11 +9,12 @@
   "lstm_size": 128,
   "num_epochs": 20000,
   "batch_size": 32,
-  "debug": true,
-  "debug_size": 50,
-  "load_ckpt": true,
-  "ckpt_dir": "/home/local/ANT/zelunluo/Documents/checkpoint/",
-  "save_every_n_steps": 15,
+  "debug": false,
+  "debug_size": 32,
+  "load_ckpt": false,
+  "ckpt_dir": "/home/local/ANT/zelunluo/checkpoint/",
+  "save_every_n_steps": 100,
+  "test_only": true,
   "test_every_n_steps": 1,
   "test_size": 150
 }

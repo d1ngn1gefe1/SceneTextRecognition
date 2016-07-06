@@ -43,32 +43,23 @@ class Config():
       self.load_ckpt = json_data['load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.save_every_n_steps = json_data['save_every_n_steps']
+      self.test_only = json_data['test_only']
       self.test_every_n_steps = json_data['test_every_n_steps']
       self.test_size = json_data['test_size']
 
 class DTRN_Model():
   def __init__(self, config):
     self.config = config
-    self.load_data(self.config.debug)
+    self.load_data(self.config.debug, self.config.test_only)
     self.add_placeholders()
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
-    self.pred = self.add_decoder(self.outputs)
+    #self.pred = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
-  def load_data(self, debug=False):
-    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
+  def load_data(self, debug=False, test_only=False):
     filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
-
-    # load train data
-    f_train = h5py.File(filename_train, 'r')
-    self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
-    self.words_embed_train = f_train.get('words_embed')[()].tolist()
-    self.time_train = np.array(f_train.get('time'), dtype=np.uint8)
-    logger.info('loading training data (%d examples)', self.imgs_train.shape[0])
-    f_train.close()
-
     f_test = h5py.File(filename_test, 'r')
     self.imgs_test = np.array(f_test.get('imgs'), dtype=np.uint8)
     self.words_embed_test = f_test.get('words_embed')[()].tolist()
@@ -76,20 +67,33 @@ class DTRN_Model():
     logger.info('loading test data (%d examples)', self.imgs_test.shape[0])
     f_test.close()
 
-    if self.config.debug:
-      self.imgs_train = self.imgs_train[:self.config.debug_size]
-      self.words_embed_train = self.words_embed_train[:self.config.debug_size]
-      self.time_train = self.time_train[:self.config.debug_size]
-
     if self.imgs_test.shape[0] > self.config.test_size:
       self.imgs_test = self.imgs_test[:self.config.test_size]
       self.words_embed_test = self.words_embed_test[:self.config.test_size]
       self.time_test = self.time_test[:self.config.test_size]
 
+
+    if test_only:
+      self.max_time = np.amax(self.time_test)
+      self.imgs_test = self.imgs_test[:, :self.max_time]
+      return
+
+    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
+    f_train = h5py.File(filename_train, 'r')
+    self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
+    self.words_embed_train = f_train.get('words_embed')[()].tolist()
+    self.time_train = np.array(f_train.get('time'), dtype=np.uint8)
+    logger.info('loading training data (%d examples)', self.imgs_train.shape[0])
+    f_train.close()
+
+    if self.config.debug:
+      self.imgs_train = self.imgs_train[:self.config.debug_size]
+      self.words_embed_train = self.words_embed_train[:self.config.debug_size]
+      self.time_train = self.time_train[:self.config.debug_size]
+
     self.max_time = max(np.amax(self.time_train), np.amax(self.time_test))
     self.imgs_train = self.imgs_train[:, :self.max_time]
     self.imgs_test = self.imgs_test[:, :self.max_time]
-
 
   def add_placeholders(self):
     # batch_size x max_time x height x width x depth
@@ -216,7 +220,7 @@ class DTRN_Model():
     return pred
 
   def add_training_op(self, loss):
-    optimizer = tf.train.RMSPropOptimizer(self.config.lr)
+    optimizer = tf.train.AdamOptimizer(self.config.lr)
     train_op = optimizer.minimize(loss)
     return train_op
 
@@ -228,10 +232,28 @@ def main():
 
   with tf.Session() as session:
     session.run(init)
-    if model.config.load_ckpt:
+    if model.config.load_ckpt or model.config.test_only:
       saver.restore(session, model.config.ckpt_dir+'model.ckpt')
       logger.info('model restored')
 
+    # test only
+    if model.config.test_only:
+      iterator_test = utils.data_iterator(
+          model.imgs_test, model.words_embed_test, model.time_test, 1,
+          model.config.test_size, model.max_time)
+
+      for step, (inputs, labels_sparse, sequence_length,
+          epoch) in enumerate(iterator_test):
+        feed = {model.inputs_placeholder: inputs,
+                model.labels_placeholder: labels_sparse,
+                model.sequence_length_placeholder: sequence_length}
+
+        ret = session.run([model.loss], feed_dict=feed)
+        logger.info('loss: %f', ret[1])
+
+      return
+
+    # train + test
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time)
@@ -260,9 +282,9 @@ def main():
         save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')
         logger.info('model saved in file: %s', save_path)
 
-      if step%model.config.test_every_n_steps == 0:
-        ret = session.run([model.pred], feed_dict=feed)
-        print ret[0]
+    #   if step%model.config.test_every_n_steps == 0:
+    #     ret = session.run([model.pred], feed_dict=feed)
+    #     print ret[0]
 
 if __name__ == '__main__':
   main()
