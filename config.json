@@ -11,10 +11,10 @@
   "batch_size": 32,
   "debug": false,
   "debug_size": 32,
-  "load_ckpt": false,
+  "load_ckpt": true,
   "ckpt_dir": "/home/local/ANT/zelunluo/checkpoint/",
   "save_every_n_steps": 100,
-  "test_only": true,
-  "test_every_n_steps": 1,
+  "test_only": false,
+  "test_every_n_steps": 50,
   "test_size": 150
 }

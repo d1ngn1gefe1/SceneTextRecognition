@@ -46,6 +46,7 @@ class Config():
       self.test_only = json_data['test_only']
       self.test_every_n_steps = json_data['test_every_n_steps']
       self.test_size = json_data['test_size']
+      self.test_size = self.test_size-self.test_size%self.batch_size
 
 class DTRN_Model():
   def __init__(self, config):
@@ -71,7 +72,6 @@ class DTRN_Model():
       self.imgs_test = self.imgs_test[:self.config.test_size]
       self.words_embed_test = self.words_embed_test[:self.config.test_size]
       self.time_test = self.time_test[:self.config.test_size]
-
 
     if test_only:
       self.max_time = np.amax(self.time_test)
@@ -240,8 +240,9 @@ def main():
     if model.config.test_only:
       iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test, 1,
-          model.config.test_size, model.max_time)
+          model.config.batch_size, model.max_time)
 
+      losses = []
       for step, (inputs, labels_sparse, sequence_length,
           epoch) in enumerate(iterator_test):
         feed = {model.inputs_placeholder: inputs,
@@ -249,18 +250,14 @@ def main():
                 model.sequence_length_placeholder: sequence_length}
 
         ret = session.run([model.loss], feed_dict=feed)
-        logger.info('loss: %f', ret[1])
-
+        losses.append(ret[0])
+      logger.info('test loss: %f', np.mean(losses))
       return
 
     # train + test
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time)
-
-    iterator_test = utils.data_iterator(
-        model.imgs_test, model.words_embed_test, model.time_test, 1,
-        model.config.test_size, model.max_time)
 
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
@@ -276,15 +273,30 @@ def main():
               model.sequence_length_placeholder: sequence_length}
 
       ret = session.run([model.train_op, model.loss], feed_dict=feed)
-      logger.info('loss: %f', ret[1])
+      logger.info('training loss: %f', ret[1])
+
+      if step%model.config.test_every_n_steps == 0:
+        losses = []
+
+        iterator_test = utils.data_iterator(
+          model.imgs_test, model.words_embed_test, model.time_test,
+          1, model.config.batch_size, model.max_time)
+
+        for step, (inputs, labels_sparse, sequence_length,
+            epoch) in enumerate(iterator_test):
+          feed = {model.inputs_placeholder: inputs,
+              model.labels_placeholder: labels_sparse,
+              model.sequence_length_placeholder: sequence_length}
+
+          ret = session.run([model.loss], feed_dict=feed)
+          losses.append(ret[0])
+        print losses
+        logger.info('test loss: %f (batch size = %d)', np.mean(losses),
+            len(losses))
 
       if step%model.config.save_every_n_steps == 0:
         save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')
         logger.info('model saved in file: %s', save_path)
-
-    #   if step%model.config.test_every_n_steps == 0:
-    #     ret = session.run([model.pred], feed_dict=feed)
-    #     print ret[0]
 
 if __name__ == '__main__':
   main()
