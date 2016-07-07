@@ -1,28 +1,15 @@
 import tensorflow as tf
 import numpy as np
 import utils
-import cv2
+from utils import logger
 import h5py
 import math
 import os
 import time
 import json
-import logging
 import sys
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s %(message)s')
 
-fh = logging.FileHandler('debug.log')
-fh.setLevel(logging.INFO)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
-
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 class Config():
   def __init__(self):
@@ -56,7 +43,7 @@ class DTRN_Model():
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
-    #self.pred = self.add_decoder(self.outputs)
+    self.pred = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
@@ -208,9 +195,15 @@ class DTRN_Model():
     return outputs
 
   def add_loss_op(self, outputs):
-    loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
-        self.sequence_length_placeholder, ctc_merge_repeated=False)
-    loss = tf.reduce_mean(loss)
+    self.dense1 = tf.cast(outputs, tf.float32)
+    self.dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder), tf.float32)
+
+    # loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
+    #     self.sequence_length_placeholder)
+    # loss = tf.reduce_mean(loss)
+
+    diff = tf.reduce_mean(self.dense1)-tf.reduce_mean(self.dense2)
+    loss = tf.nn.l2_loss(diff)
     return loss
 
   def add_decoder(self, outputs):
@@ -272,27 +265,29 @@ def main():
               model.labels_placeholder: labels_sparse,
               model.sequence_length_placeholder: sequence_length}
 
-      ret = session.run([model.train_op, model.loss], feed_dict=feed)
-      logger.info('training loss: %f', ret[1])
+      ret = session.run([model.train_op, model.loss, model.dense1, model.dense2], feed_dict=feed)
+      logger.info('loss = %f', ret[1])
+      #print ret[2]
+      #print ret[3]
 
-      if step%model.config.test_every_n_steps == 0:
-        losses = []
+      if step%model.config.test_every_n_steps == 0 and False:
+        losses_test = []
 
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
           1, model.config.batch_size, model.max_time)
 
-        for step, (inputs, labels_sparse, sequence_length,
-            epoch) in enumerate(iterator_test):
-          feed = {model.inputs_placeholder: inputs,
-              model.labels_placeholder: labels_sparse,
-              model.sequence_length_placeholder: sequence_length}
+        for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
+            epoch_test) in enumerate(iterator_test):
+          feed_test = {model.inputs_placeholder: inputs_test,
+              model.labels_placeholder: labels_sparse_test,
+              model.sequence_length_placeholder: sequence_length_test}
 
-          ret = session.run([model.loss], feed_dict=feed)
-          losses.append(ret[0])
-        print losses
-        logger.info('test loss: %f (batch size = %d)', np.mean(losses),
-            len(losses))
+          ret_test = session.run([model.loss], feed_dict=feed_test)
+          losses_test.append(ret_test[0])
+        print losses_test
+        logger.info('test loss: %f (batch size = %d)', np.mean(losses_test),
+            len(losses_test))
 
       if step%model.config.save_every_n_steps == 0:
         save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')

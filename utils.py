@@ -1,8 +1,24 @@
 import numpy as np
 import tensorflow as tf
 import math
+import cv2
+import logging
 
 np.set_printoptions(threshold=np.nan)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(message)s')
+
+fh = logging.FileHandler('debug.log')
+fh.setLevel(logging.INFO)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 def char2index(char):
   """Convert a character into an index
@@ -46,15 +62,11 @@ def dense2sparse(x, max_words_length):
 
   return (x_ix, x_val, x_shape)
 
-# def outputs2words(outputs):
-#   """
-#   Args:
-#     outputs: max_time x batch_size x embed_size
-#   """
-#   words = []
-#   for i in range(outputs.shape[1]):
-#     indices = np.argmax(outputs[:, i, :], axis=1)
-
+def indices2word(indices):
+  word = ''
+  for index in indices:
+    word += index2char(index)
+  return word
 
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
   num_examples = imgs.shape[0]
@@ -70,8 +82,11 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     if max_words_length < word_length:
       max_words_length = word_length
 
-  inputs = np.zeros((max_time, batch_size, height, window_size, depth))
-  sequence_length = np.zeros(batch_size, dtype='int32')
+  logger.info('max time: %f', max_time)
+  logger.info('max words length: %f', max_words_length)
+
+  inputs = np.zeros((batch_size, max_time, height, window_size, depth))
+  sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
   labels = [] # a list of numpy arrays
 
   for i in range(num_steps):
@@ -96,6 +111,16 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     labels_sparse = dense2sparse(labels, max_words_length)
 
     epoch = i*batch_size/num_examples
+
+    # print '\n\n'
+    # print i
+    # for j in range(inputs.shape[0]):
+    #   print inputs[j, :sequence_length[j]].shape
+    #   print sequence_length[j], indices2word(labels[j])
+    #   for k, img in enumerate(inputs[j, :sequence_length[j]]):
+    #     cv2.imwrite('/home/local/ANT/zelunluo/SceneTextRecognition/imgs/'
+    #         +str(i)+'_'+str(j)+'_'+str(k)+'.jpg', img)
+
     yield (inputs, labels_sparse, sequence_length, epoch)
 
 def variable_with_weight_decay(name, shape, stddev, wd):
