@@ -3,6 +3,7 @@ import tensorflow as tf
 import math
 import cv2
 import logging
+from tensorflow.python.ops import functional_ops
 
 np.set_printoptions(threshold=np.nan)
 
@@ -25,6 +26,7 @@ def char2index(char):
     index 0 - 9: '0' - '9'
     index 10 - 35: 'A' - 'Z'
     index 36 - 61: 'a' - 'z'
+
     ord('0') = 48, ord('9') = 57,
     ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
   """
@@ -51,14 +53,17 @@ def index2char(index):
     print 'index2char: invalid input'
     return '?'
 
-def dense2sparse(x, max_words_length):
+def dense2sparse(labels, max_words_length):
   x_ix = []
   x_val = []
-  for batch_i, batch in enumerate(x):
-    for time, val in enumerate(batch):
-      x_ix.append([batch_i, time])
-      x_val.append(val)
-  x_shape = [len(x), max_words_length]
+
+  for b, label in enumerate(labels):
+    for t in range(max_words_length):
+      if t < label.shape[0]:
+        x_ix.append([b, t])
+        x_val.append(label[t])
+
+  x_shape = [len(labels), max_words_length]
 
   return (x_ix, x_val, x_shape)
 
@@ -82,12 +87,12 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     if max_words_length < word_length:
       max_words_length = word_length
 
-  logger.info('max time: %f', max_time)
-  logger.info('max words length: %f', max_words_length)
+  logger.info('max time: %d', max_time)
+  logger.info('max words length: %d', max_words_length)
 
   inputs = np.zeros((batch_size, max_time, height, window_size, depth))
   sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
-  labels = [] # a list of numpy arrays
+  labels = []
 
   for i in range(num_steps):
     labels = []

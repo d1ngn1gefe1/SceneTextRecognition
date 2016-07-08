@@ -9,8 +9,6 @@ import time
 import json
 import sys
 
-
-
 class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
@@ -172,7 +170,8 @@ class DTRN_Model():
           self.max_time, -1))
 
       rnn_outputs, _ = tf.nn.dynamic_rnn(self.cell, data_encoder,
-          sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
+          sequence_length=self.sequence_length_placeholder, dtype=tf.float32,
+          time_major=False)
 
       # rnn_outputs: batch_size x max_time x lstm_size
       return rnn_outputs
@@ -195,15 +194,15 @@ class DTRN_Model():
     return outputs
 
   def add_loss_op(self, outputs):
-    self.dense1 = tf.cast(outputs, tf.float32)
-    self.dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder), tf.float32)
+    # dense1 = tf.cast(outputs, tf.float32)
+    # dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder), tf.float32)
+    # diff = tf.reduce_mean(dense1)-tf.reduce_mean(dense2)
+    # loss = tf.nn.l2_loss(diff)
+    
+    loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
+        self.sequence_length_placeholder)
+    loss = tf.reduce_mean(loss)
 
-    # loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
-    #     self.sequence_length_placeholder)
-    # loss = tf.reduce_mean(loss)
-
-    diff = tf.reduce_mean(self.dense1)-tf.reduce_mean(self.dense2)
-    loss = tf.nn.l2_loss(diff)
     return loss
 
   def add_decoder(self, outputs):
@@ -265,10 +264,8 @@ def main():
               model.labels_placeholder: labels_sparse,
               model.sequence_length_placeholder: sequence_length}
 
-      ret = session.run([model.train_op, model.loss, model.dense1, model.dense2], feed_dict=feed)
+      ret = session.run([model.train_op, model.loss], feed_dict=feed)
       logger.info('loss = %f', ret[1])
-      #print ret[2]
-      #print ret[3]
 
       if step%model.config.test_every_n_steps == 0 and False:
         losses_test = []
