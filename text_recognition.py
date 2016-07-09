@@ -41,7 +41,7 @@ class DTRN_Model():
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
-    self.pred = self.add_decoder(self.outputs)
+    #self.pred = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
@@ -92,6 +92,10 @@ class DTRN_Model():
     # batch_size
     self.sequence_length_placeholder = tf.placeholder(tf.int32,
         shape=[self.config.batch_size])
+
+    # max_time x batch_size x embed_size
+    self.outputs_mask_placeholder = tf.placeholder(tf.float32,
+        shape=[self.max_time, self.config.batch_size, self.config.embed_size])
 
   def CNN(self, images):
     # images: 4D tensor of size [batch_size, height, width, depth]
@@ -155,7 +159,7 @@ class DTRN_Model():
     self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
         state_is_tuple=True)
 
-    with tf.variable_scope('LSTM') as scope:
+    with tf.variable_scope('CNN_LSTM') as scope:
       # inputs_placeholder: batch_size x max_time x height x window_size x depth
       # data_cnn: batch_size*max_time x height x window_size x depth
       data_cnn = tf.reshape(self.inputs_placeholder,
@@ -187,10 +191,13 @@ class DTRN_Model():
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
           (self.config.batch_size*self.max_time, self.config.lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
+      outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
+      # outputs: max_time x batch_size x embed_size
+      self.dense3 = outputs
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
+      outputs = tf.add(outputs, self.outputs_mask_placeholder)
 
-    # outputs: max_time x batch_size x embed_size
     return outputs
 
   def add_loss_op(self, outputs):
@@ -198,7 +205,13 @@ class DTRN_Model():
     # dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder), tf.float32)
     # diff = tf.reduce_mean(dense1)-tf.reduce_mean(dense2)
     # loss = tf.nn.l2_loss(diff)
-    
+
+    self.dense1 = tf.argmax(outputs, 2)
+    self.dense1 = tf.transpose(self.dense1, perm=[1, 0])
+    self.dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder), tf.float32)
+
+    #loss = tf.reduce_mean(self.dense2-self.dense1[:, self.max_time])
+
     loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
         self.sequence_length_placeholder)
     loss = tf.reduce_mean(loss)
@@ -232,10 +245,10 @@ def main():
     if model.config.test_only:
       iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test, 1,
-          model.config.batch_size, model.max_time)
+          model.config.batch_size, model.max_time, model.config.embed_size)
 
       losses = []
-      for step, (inputs, labels_sparse, sequence_length,
+      for step, (inputs, labels_sparse, sequence_length, outputs_mask,
           epoch) in enumerate(iterator_test):
         feed = {model.inputs_placeholder: inputs,
                 model.labels_placeholder: labels_sparse,
@@ -249,32 +262,37 @@ def main():
     # train + test
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
-        model.config.num_epochs, model.config.batch_size, model.max_time)
+        model.config.num_epochs, model.config.batch_size, model.max_time,
+        model.config.embed_size)
 
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
         num_examples*model.config.num_epochs/model.config.batch_size))
 
-    for step, (inputs, labels_sparse, sequence_length,
+    for step, (inputs, labels_sparse, sequence_length, outputs_mask,
         epoch) in enumerate(iterator_train):
       logger.info('epoch %d/%d, step %d/%d', epoch, model.config.num_epochs,
           step, num_steps)
 
       feed = {model.inputs_placeholder: inputs,
               model.labels_placeholder: labels_sparse,
-              model.sequence_length_placeholder: sequence_length}
+              model.sequence_length_placeholder: sequence_length,
+              model.outputs_mask_placeholder: outputs_mask}
 
-      ret = session.run([model.train_op, model.loss], feed_dict=feed)
+      ret = session.run([model.train_op, model.loss, model.dense1, model.dense2, model.dense3], feed_dict=feed)
       logger.info('loss = %f', ret[1])
+      print ret[2]
+      print ret[3]
+      #print ret[4]
 
       if step%model.config.test_every_n_steps == 0 and False:
         losses_test = []
 
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
-          1, model.config.batch_size, model.max_time)
+          1, model.config.batch_size, model.max_time, model.config.embed_size)
 
-        for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
+        for step_test, (inputs_test, labels_sparse_test, sequence_length_test, outputs_mask,
             epoch_test) in enumerate(iterator_test):
           feed_test = {model.inputs_placeholder: inputs_test,
               model.labels_placeholder: labels_sparse_test,

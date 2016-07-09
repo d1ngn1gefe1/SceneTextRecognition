@@ -3,7 +3,6 @@ import tensorflow as tf
 import math
 import cv2
 import logging
-from tensorflow.python.ops import functional_ops
 
 np.set_printoptions(threshold=np.nan)
 
@@ -53,17 +52,17 @@ def index2char(index):
     print 'index2char: invalid input'
     return '?'
 
-def dense2sparse(labels, max_words_length):
+def dense2sparse(labels):
   x_ix = []
   x_val = []
 
   for b, label in enumerate(labels):
-    for t in range(max_words_length):
+    for t, val in enumerate(label):
       if t < label.shape[0]:
         x_ix.append([b, t])
-        x_val.append(label[t])
+        x_val.append(val)
 
-  x_shape = [len(labels), max_words_length]
+  x_shape = [len(labels), np.asarray(x_ix).max(0)[1]+1]
 
   return (x_ix, x_val, x_shape)
 
@@ -73,7 +72,8 @@ def indices2word(indices):
     word += index2char(index)
   return word
 
-def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
+def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
+    embed_size):
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
   height = imgs.shape[2]
@@ -113,9 +113,13 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
       sequence_length = np.concatenate((time[startIdx:], time[:endIdx]))
       labels = words_embed[startIdx:]+words_embed[:endIdx]
 
-    labels_sparse = dense2sparse(labels, max_words_length)
+    labels_sparse = dense2sparse(labels)
 
     epoch = i*batch_size/num_examples
+
+    outputs_mask = np.zeros((max_time, batch_size, embed_size))
+    for j, length in enumerate(sequence_length):
+      outputs_mask[length:, j, :] = np.nan
 
     # print '\n\n'
     # print i
@@ -126,7 +130,7 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time):
     #     cv2.imwrite('/home/local/ANT/zelunluo/SceneTextRecognition/imgs/'
     #         +str(i)+'_'+str(j)+'_'+str(k)+'.jpg', img)
 
-    yield (inputs, labels_sparse, sequence_length, epoch)
+    yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
 
 def variable_with_weight_decay(name, shape, stddev, wd):
   """Helper to create an initialized Variable with weight decay.
