@@ -90,19 +90,13 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
   logger.info('max time: %d', max_time)
   logger.info('max words length: %d', max_words_length)
 
-  inputs = np.zeros((batch_size, max_time, height, window_size, depth))
-  sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
-  labels = []
-
   for i in range(num_steps):
-    labels = []
-
     startIdx = i*batch_size%num_examples
     endIdx = (i+1)*batch_size%num_examples
 
     if startIdx < endIdx:
       inputs = imgs[startIdx:endIdx]
-      sequence_length = time[startIdx:endIdx]
+      sequence_length = time[startIdx:endIdx] # number of windows
       labels = words_embed[startIdx:endIdx]
     elif endIdx == 0:
       inputs = imgs[startIdx:]
@@ -120,15 +114,6 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     outputs_mask = np.zeros((max_time, batch_size, embed_size))
     for j, length in enumerate(sequence_length):
       outputs_mask[length:, j, :] = np.nan
-
-    # print '\n\n'
-    # print i
-    # for j in range(inputs.shape[0]):
-    #   print inputs[j, :sequence_length[j]].shape
-    #   print sequence_length[j], indices2word(labels[j])
-    #   for k, img in enumerate(inputs[j, :sequence_length[j]]):
-    #     cv2.imwrite('/home/local/ANT/zelunluo/SceneTextRecognition/imgs/'
-    #         +str(i)+'_'+str(j)+'_'+str(k)+'.jpg', img)
 
     yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
 
