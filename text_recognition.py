@@ -32,6 +32,7 @@ class Config():
       self.test_every_n_steps = json_data['test_every_n_steps']
       self.test_size = json_data['test_size']
       self.test_size = self.test_size-self.test_size%self.batch_size
+      self.gpu = json_data['gpu']
 
 class DTRN_Model():
   def __init__(self, config):
@@ -199,14 +200,14 @@ class DTRN_Model():
     return outputs
 
   def add_loss_op(self, outputs):
-    loss = tf.nn.ctc_loss(outputs, self.labels_placeholder,
+    loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
         self.sequence_length_placeholder)
     loss = tf.reduce_mean(loss)
 
     return loss
 
   def add_decoder(self, outputs):
-    decoded, _ = tf.nn.ctc_beam_search_decoder(outputs,
+    decoded, _ = tf.contrib.ctc.ctc_beam_search_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
 
     return decoded[0]
@@ -297,7 +298,7 @@ def main():
           ret_test = session.run([model.loss], feed_dict=feed_test)
           losses_test.append(ret_test[0])
 
-        logger.info('test loss: %f (batch size = %d)', np.mean(losses_test),
+        logger.info('test loss: %f (#batches = %d)', np.mean(losses_test),
             len(losses_test))
 
       if step%model.config.save_every_n_steps == 0:
