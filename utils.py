@@ -90,6 +90,10 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
   logger.info('max time: %d', max_time)
   logger.info('max words length: %d', max_words_length)
 
+  inputs = np.zeros((batch_size, max_time, height, window_size, depth))
+  sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
+  outputs_mask = np.zeros((max_time, batch_size, embed_size))
+
   for i in range(num_steps):
     startIdx = i*batch_size%num_examples
     endIdx = (i+1)*batch_size%num_examples
@@ -111,7 +115,7 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
 
     epoch = i*batch_size/num_examples
 
-    outputs_mask = np.zeros((max_time, batch_size, embed_size))
+    outputs_mask.fill(0)
     for j, length in enumerate(sequence_length):
       outputs_mask[length:, j, :] = np.nan
 

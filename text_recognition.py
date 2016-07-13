@@ -199,23 +199,17 @@ class DTRN_Model():
     return outputs
 
   def add_loss_op(self, outputs):
-    loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
+    loss = tf.nn.ctc_loss(outputs, self.labels_placeholder,
         self.sequence_length_placeholder)
     loss = tf.reduce_mean(loss)
 
     return loss
 
   def add_decoder(self, outputs):
-    self.dense1 = tf.transpose(tf.argmax(outputs, 2), perm=[1, 0])
-    self.dense2 = tf.cast(tf.sparse_tensor_to_dense(self.labels_placeholder),
-        tf.float32)
-
-    decoded, _ = tf.contrib.ctc.ctc_beam_search_decoder(outputs,
+    decoded, _ = tf.nn.ctc_beam_search_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
-    pred = tf.sparse_tensor_to_dense(decoded[0])
-    #tf.edit_distance(decoded[0], self.labels_placeholder)
 
-    return pred
+    return decoded[0]
 
   def add_training_op(self, loss):
     optimizer = tf.train.AdamOptimizer(self.config.lr)
@@ -266,10 +260,15 @@ def main():
         num_examples*model.config.num_epochs/model.config.batch_size))
 
     losses_train = []
+    cur_epoch = -1
     for step, (inputs_train, labels_sparse_train, sequence_length_train,
         outputs_mask_train, epoch_train) in enumerate(iterator_train):
-      logger.info('epoch %d/%d, step %d/%d', epoch_train,
-          model.config.num_epochs, step, num_steps)
+      if epoch_train != cur_epoch:
+        if cur_epoch >= 0:
+          logger.info('average loss in epoch %d: %f', cur_epoch, np.mean(
+              losses_train[len(losses_train)/(cur_epoch+1)*cur_epoch:]))
+          logger.info('average loss overall: %f', np.mean(losses_train))
+        cur_epoch = epoch_train
 
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_sparse_train,
@@ -279,17 +278,11 @@ def main():
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
-      logger.info('training loss = %f', ret_train[1])
+      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+          ret_train[1])
 
       if step%model.config.test_every_n_steps == 0:
         losses_test = []
-
-        ret_train = session.run([model.dense1, model.dense2, model.pred],
-            feed_dict=feed_train)
-        logger.info(ret_train[0][:20])
-        logger.info(ret_train[1][:20])
-        logger.info(ret_train[2][:20])
-
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
           1, model.config.batch_size, model.max_time, model.config.embed_size)
