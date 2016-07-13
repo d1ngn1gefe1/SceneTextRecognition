@@ -8,7 +8,8 @@ import json
 import utils
 import math
 
-def load_and_process(dataset_dir, data, height, window_size, depth, stride):
+def load_and_process(dataset_dir, data, height, window_size, depth, stride,
+    visualize, visualize_dir):
   """
   Args:
       dataset_dir:
@@ -28,10 +29,10 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
   imgs = []
   words_embed = []
   time = np.zeros(num_examples, dtype=np.uint8)
+  drop = 1 # drop frame when too much padding
 
-  num_rescale = 0
-  scales = []
-  scale_factor = 1.1
+  if visualize and not os.path.exists(visualize_dir):
+    os.makedirs(visualize_dir)
 
   for i in range(num_examples):
     img = cv2.imread(dataset_dir + data[i][0][0])
@@ -40,28 +41,32 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
     img = cv2.resize(img, (w, h))
     word = str(data[i][1][0])
 
-    cur_time = int(math.ceil((w-window_size)/float(stride)+1))
-    cur_time = max(cur_time, 1)
+    cur_time = int(math.ceil((w+window_size)/float(stride)-1))
     word_length = len(word)
 
     # Not enough time for target transition sequence
-    if word_length >= cur_time:
-      num_rescale += 1
-      scale = 1
-      while word_length >= cur_time:
-        w *= scale_factor
-        w = int(w)
-        scale *= scale_factor
-        img = cv2.resize(img, (w, h))
-        cur_time = int(math.ceil((w-window_size)/float(stride)+1))
-        cur_time = max(cur_time, 1)
-      scales.append(scale)
+    assert cur_time > word_length
 
     img_windows = np.zeros((cur_time, height, window_size, depth))
     for j in range(cur_time):
-      start = j*stride
-      end = min(j*stride+window_size, w)
-      img_windows[j, :, :(end-start), :] = img[:, start:end, :]
+      start1 = max((j+1)*stride-window_size, 0)
+      end1 = min((j+1)*stride, w)
+      start2 = max(-((j+1)*stride-window_size), 0)
+      end2 = min(start2+end1-start1, window_size)
+
+      img_windows[j, :, start2:end2, :] = img[:, start1:end1, :]
+      if start2 != 0:
+        img_windows[j, :, :start2] = img_windows[j, :, start2][:, np.newaxis, :]
+      if end2 != window_size:
+        img_windows[j, :, end2:] = img_windows[j, :, end2-1][:, np.newaxis, :]
+
+      if visualize and i < 50 and j >= drop and j < cur_time-drop:
+        #print i, j, cur_time, start1, end1, start2, end2, w
+        cv2.imwrite(visualize_dir+str(i)+'_'+str(j)+'.jpg', img_windows[j])
+
+    img_windows = img_windows[drop:cur_time-drop]
+    cur_time -= drop*2
+
     imgs.append(img_windows)
     time[i] = cur_time
 
@@ -69,9 +74,6 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride):
     for j, char in enumerate(word):
       word_embed[j] = utils.char2index(char)
     words_embed.append(word_embed)
-
-  print 'rescale ', num_rescale, '/', num_examples, ' images'
-  print 'average scale factor: ', np.array(scales).mean()
 
   return (imgs, words_embed, time)
 
@@ -121,6 +123,8 @@ def main():
     depth = json_data['depth']
     embed_size = json_data['embed_size']
     stride = json_data['stride']
+    visualize = json_data['visualize']
+    visualize_dir = json_data['visualize_dir']
 
   train_dict = scipy.io.loadmat(dataset_dir + 'trainCharBound.mat')
   train_data = np.squeeze(train_dict['trainCharBound'])
@@ -128,9 +132,9 @@ def main():
   test_data = np.squeeze(test_dict['testCharBound'])
 
   imgs_train, words_embed_train, time_train = load_and_process(dataset_dir,
-      train_data, height, window_size, depth, stride)
+      train_data, height, window_size, depth, stride, visualize, visualize_dir)
   imgs_test, words_embed_test, time_test = load_and_process(dataset_dir,
-      test_data, height, window_size, depth, stride)
+      test_data, height, window_size, depth, stride, False, visualize_dir)
 
   max_time = int(max(max(time_train), max(time_test)))
 
