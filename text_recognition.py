@@ -20,6 +20,7 @@ class Config():
       self.embed_size = json_data['embed_size']
       self.stride = json_data['stride']
       self.lr = json_data['lr']
+      self.keep_prob = json_data['keep_prob']
       self.lstm_size = json_data['lstm_size']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
@@ -98,62 +99,49 @@ class DTRN_Model():
     self.outputs_mask_placeholder = tf.placeholder(tf.float32,
         shape=[self.max_time, self.config.batch_size, self.config.embed_size])
 
-  def CNN(self, images):
-    # images: 4D tensor of size [batch_size, height, width, depth]
+    # max_time x batch_size x embed_size
+    self.keep_prob_placeholder = tf.placeholder(tf.float32)
 
+  def CNN(self, x):
     with tf.variable_scope('conv1') as scope:
-      kernel = utils.variable_with_weight_decay('weights',
-          shape=[5, 5, 3, 64], stddev=1e-4, wd=0.0)
-      conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = tf.get_variable('biases', [64],
-          initializer=tf.constant_initializer(0.0))
-      bias = tf.nn.bias_add(conv, biases)
-      conv1 = tf.nn.relu(bias, name=scope.name)
+      W_conv1 = tf.get_variable('Weight', [5, 5, 1, 32],
+          initializer=tf.contrib.layers.xavier_initializer())
+      b_conv1 = tf.get_variable('Bias', [32],
+          initializer=tf.constant_initializer(0.1))
+      h_conv1 = tf.nn.relu(tf.nn.conv2d(x, W_conv1, strides=[1, 1, 1, 1],
+          padding='SAME') + b_conv1)
+      h_pool1 = tf.nn.max_pool(h_conv1, ksize=[1, 2, 2, 1],
+          strides=[1, 2, 2, 1], padding='SAME')
 
-    # pool1
-    pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-        padding='SAME', name='pool1')
-    # norm1
-    norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-        name='norm1')
-
-    # conv2
     with tf.variable_scope('conv2') as scope:
-      kernel = utils.variable_with_weight_decay('weights',
-          shape=[5, 5, 64, 64], stddev=1e-4, wd=0.0)
-      conv = tf.nn.conv2d(norm1, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = tf.get_variable('biases', [64],
+      W_conv2 = tf.get_variable('Weight', [5, 5, 32, 64],
+          initializer=tf.contrib.layers.xavier_initializer())
+      b_conv2 = tf.get_variable('Bias', [64],
           initializer=tf.constant_initializer(0.1))
-      bias = tf.nn.bias_add(conv, biases)
-      conv2 = tf.nn.relu(bias, name=scope.name)
+      h_conv2 = tf.nn.relu(tf.nn.conv2d(h_pool1, W_conv2, strides=[1, 1, 1, 1],
+          padding='SAME') + b_conv2)
+      h_pool2 = tf.nn.max_pool(h_conv2, ksize=[1, 2, 2, 1],
+          strides=[1, 2, 2, 1], padding='SAME')
 
-    # norm2
-    norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-        name='norm2')
-    # pool2
-    pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
-        strides=[1, 2, 2, 1], padding='SAME', name='pool2')
-
-    # local3
-    with tf.variable_scope('local3') as scope:
-      # Move everything into depth so we can perform a single matrix multiply.
-      reshape = tf.reshape(pool2, [self.max_time*self.config.batch_size, -1])
-      dim = reshape.get_shape()[1].value
-      weights = utils.variable_with_weight_decay('weights', shape=[dim, 384],
-          stddev=0.04, wd=0.004)
-      biases = tf.get_variable('biases', [384],
+    with tf.variable_scope('fc1') as scope:
+      W_fc1 = tf.get_variable('Weight', [7*7*64, 1024],
+          initializer=tf.contrib.layers.xavier_initializer())
+      b_fc1 = tf.get_variable('Bias', [1024],
           initializer=tf.constant_initializer(0.1))
-      local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
+      h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
+      h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-    # local4
-    with tf.variable_scope('local4') as scope:
-      weights = utils.variable_with_weight_decay('weights', shape=[384, 192],
-          stddev=0.04, wd=0.004)
-      biases = tf.get_variable('biases', [192],
+    with tf.variable_scope('dropout') as scope:
+      h_fc1_drop = tf.nn.dropout(h_fc1, self.keep_prob_placeholder)
+
+    with tf.variable_scope('fc2') as scope:
+      W_fc2 = tf.get_variable('Weight', [1024, 128],
+          initializer=tf.contrib.layers.xavier_initializer())
+      b_fc2 = tf.get_variable('Bias', [128],
           initializer=tf.constant_initializer(0.1))
-      local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
+      y = tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 
-    return local4
+    return y
 
   def add_model(self):
     self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
@@ -166,7 +154,7 @@ class DTRN_Model():
           [self.max_time*self.config.batch_size, self.config.height,
           self.config.window_size, self.config.depth])
 
-      # img_features: batch_size*max_time x feature_size (192)
+      # img_features: batch_size*max_time x feature_size (128)
       img_features = self.CNN(data_cnn)
 
       # data_encoder: batch_size x max_time x feature_size
@@ -184,19 +172,18 @@ class DTRN_Model():
     with tf.variable_scope('Projection'):
       W = tf.get_variable('Weight', [self.config.lstm_size,
           self.config.embed_size],
-          initializer=tf.random_normal_initializer(0.0, 1e-3))
+          initializer=tf.contrib.layers.xavier_initializer())
       b = tf.get_variable('Bias', [self.config.embed_size],
           initializer=tf.constant_initializer(0.0))
 
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
           (self.config.batch_size*self.max_time, self.config.lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
-      outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
-      # outputs: max_time x batch_size x embed_size
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
       outputs = tf.add(outputs, self.outputs_mask_placeholder)
 
+      # outputs: max_time x batch_size x embed_size
     return outputs
 
   def add_loss_op(self, outputs):
@@ -227,30 +214,12 @@ def main():
 
   with tf.Session() as session:
     session.run(init)
+
+    # restore previous session
     if model.config.load_ckpt or model.config.test_only:
       saver.restore(session, model.config.ckpt_dir+'model.ckpt')
       logger.info('model restored')
 
-    # test only
-    if model.config.test_only:
-      iterator_test = utils.data_iterator(
-        model.imgs_test, model.words_embed_test, model.time_test,
-        1, model.config.batch_size, model.max_time, model.config.embed_size)
-
-      losses_test = []
-      for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
-          outputs_mask_test, epoch_test) in enumerate(iterator_test):
-        feed_test = {model.inputs_placeholder: inputs_test,
-                     model.labels_placeholder: labels_sparse_test,
-                     model.sequence_length_placeholder: sequence_length_test,
-                     model.outputs_mask_placeholder: outputs_mask_test}
-
-        ret = session.run([model.loss], feed_dict=feed)
-        losses_test.append(ret[0])
-      logger.info('test loss: %f', np.mean(losses_test))
-      return
-
-    # train + test
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time,
@@ -261,27 +230,12 @@ def main():
         num_examples*model.config.num_epochs/model.config.batch_size))
 
     losses_train = []
-    cur_epoch = -1
+    cur_epoch = 0
+    step_epoch = 0
     for step, (inputs_train, labels_sparse_train, sequence_length_train,
         outputs_mask_train, epoch_train) in enumerate(iterator_train):
-      if epoch_train != cur_epoch:
-        if cur_epoch >= 0:
-          logger.info('average loss in epoch %d: %f', cur_epoch, np.mean(
-              losses_train[len(losses_train)/(cur_epoch+1)*cur_epoch:]))
-          logger.info('average loss overall: %f', np.mean(losses_train))
-        cur_epoch = epoch_train
 
-      feed_train = {model.inputs_placeholder: inputs_train,
-                    model.labels_placeholder: labels_sparse_train,
-                    model.sequence_length_placeholder: sequence_length_train,
-                    model.outputs_mask_placeholder: outputs_mask_train}
-
-      ret_train = session.run([model.train_op, model.loss],
-          feed_dict=feed_train)
-      losses_train.append(ret_train[1])
-      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
-          ret_train[1])
-
+      # test
       if step%model.config.test_every_n_steps == 0:
         losses_test = []
         iterator_test = utils.data_iterator(
@@ -293,13 +247,37 @@ def main():
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_sparse_test,
                        model.sequence_length_placeholder: sequence_length_test,
-                       model.outputs_mask_placeholder: outputs_mask_test}
+                       model.outputs_mask_placeholder: outputs_mask_test,
+                       model.keep_prob_placeholder: 1.0}
 
           ret_test = session.run([model.loss], feed_dict=feed_test)
           losses_test.append(ret_test[0])
 
         logger.info('test loss: %f (#batches = %d)', np.mean(losses_test),
             len(losses_test))
+
+        if model.config.test_only:
+          return
+
+      # new epoch, calculate average loss from last epoch
+      if epoch_train != cur_epoch:
+        logger.info('average loss in epoch %d: %f\n', cur_epoch, np.mean(
+            losses_train[step_epoch:]))
+        #logger.info('average loss overall: %f', np.mean(losses_train))
+        step_epoch = step
+        cur_epoch = epoch_train
+
+      feed_train = {model.inputs_placeholder: inputs_train,
+                    model.labels_placeholder: labels_sparse_train,
+                    model.sequence_length_placeholder: sequence_length_train,
+                    model.outputs_mask_placeholder: outputs_mask_train,
+                    model.keep_prob_placeholder: model.config.keep_prob}
+
+      ret_train = session.run([model.train_op, model.loss],
+          feed_dict=feed_train)
+      losses_train.append(ret_train[1])
+      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+          ret_train[1])
 
       if step%model.config.save_every_n_steps == 0:
         save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')

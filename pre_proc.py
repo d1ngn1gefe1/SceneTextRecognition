@@ -29,7 +29,7 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
   imgs = []
   words_embed = []
   time = np.zeros(num_examples, dtype=np.uint8)
-  drop = 1 # drop frame when too much padding
+  drop = 3 # drop frame when too much padding
 
   if visualize and not os.path.exists(visualize_dir):
     os.makedirs(visualize_dir)
@@ -41,11 +41,15 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
     img = cv2.resize(img, (w, h))
     word = str(data[i][1][0])
 
+    if depth == 1:
+      img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+      img = img[:, :, None]
+
     cur_time = int(math.ceil((w+window_size)/float(stride)-1))
     word_length = len(word)
 
     # Not enough time for target transition sequence
-    assert cur_time > word_length
+    assert cur_time-drop*2 > word_length
 
     img_windows = np.zeros((cur_time, height, window_size, depth))
     for j in range(cur_time):
