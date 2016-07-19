@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 from utils import logger
-from cnn import CNN
+import cnn
 import h5py
 import math
 import os
@@ -25,6 +25,9 @@ class Config():
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
+      self.load_ckpt = json_data['load_ckpt']
+      self.ckpt_dir = json_data['ckpt_dir']
+      self.save_every_n_steps = json_data['save_every_n_steps']
       self.test_only = json_data['test_only']
       self.test_every_n_steps = json_data['test_every_n_steps']
       self.test_size = json_data['test_size']
@@ -35,7 +38,7 @@ class CNN_Model():
     self.config = config
     self.load_data(self.config.debug, self.config.test_only)
     self.add_placeholders()
-    self.logits = self.add_model()
+    self.logits, self.saver = self.add_model()
     self.loss = self.add_loss_op(self.logits)
     self.train_op = self.add_training_op(self.loss)
 
@@ -72,9 +75,9 @@ class CNN_Model():
 
   def add_model(self):
     with tf.variable_scope('CNN') as scope:
-      logits = CNN(self.inputs_placeholder, self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
+      logits, saver = cnn.CNN(self.inputs_placeholder, self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
 
-    return logits
+    return logits, saver
 
   def add_loss_op(self, logits):
     losses = tf.nn.softmax_cross_entropy_with_logits(logits, self.labels_placeholder)
@@ -93,7 +96,6 @@ def main():
   config = Config()
   model = CNN_Model(config)
   init = tf.initialize_all_variables()
-  saver = tf.train.Saver()
 
   with tf.Session() as session:
     session.run(init)
@@ -152,8 +154,10 @@ def main():
       ret_train = session.run([model.train_op, model.loss, model.diff], feed_dict=feed_train)
       losses_train.append(ret_train[1])
       accuracies_train.append(float(np.sum(ret_train[2] == 0))/ret_train[2].shape[0])
-    #   logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
-    #       ret_train[1])
+
+      if step%model.config.save_every_n_steps == 0:
+        save_path = model.saver.save(session, model.config.ckpt_dir+'model.ckpt')
+        logger.info('model saved in file: %s', save_path)
 
 if __name__ == '__main__':
   main()

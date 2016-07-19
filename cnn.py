@@ -39,4 +39,9 @@ def CNN(x, depth, output_size, keep_prob):
         initializer=tf.constant_initializer(0.1))
     logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
-  return logits
+  saver = tf.train.Saver({"W_conv1": W_conv1, "b_conv1": b_conv1,
+                          "W_conv2": W_conv2, "b_conv2": b_conv2,
+                          "W_fc1": W_fc1, "b_fc1": b_fc1,
+                          "W_fc2": W_fc2, "b_fc2": b_fc2})
+
+  return logits, saver
