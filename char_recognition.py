@@ -97,8 +97,17 @@ def main():
   model = CNN_Model(config)
   init = tf.initialize_all_variables()
 
+  if not os.path.exists(model.config.ckpt_dir):
+    os.makedirs(model.config.ckpt_dir)
+
   with tf.Session() as session:
     session.run(init)
+
+    # restore previous session
+    if model.config.load_ckpt or model.config.test_only:
+      if os.path.isfile(model.config.ckpt_dir+'model_cnn.ckpt'):
+        model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
+        logger.info('model restored')
 
     iterator_train = utils.data_iterator_char(model.char_imgs_train,
         model.chars_embed_train, model.config.num_epochs,
@@ -156,7 +165,7 @@ def main():
       accuracies_train.append(float(np.sum(ret_train[2] == 0))/ret_train[2].shape[0])
 
       if step%model.config.save_every_n_steps == 0:
-        save_path = model.saver.save(session, model.config.ckpt_dir+'model.ckpt')
+        save_path = model.saver.save(session, model.config.ckpt_dir+'model_cnn.ckpt')
         logger.info('model saved in file: %s', save_path)
 
 if __name__ == '__main__':

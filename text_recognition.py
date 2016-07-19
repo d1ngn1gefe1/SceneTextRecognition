@@ -115,7 +115,7 @@ class DTRN_Model():
           self.config.window_size, self.config.depth])
 
       # img_features: batch_size*max_time x feature_size (128)
-      img_features = CNN(data_cnn, self.config.depth, 128)
+      img_features, self.saver = CNN(data_cnn, self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
 
       # data_encoder: batch_size x max_time x feature_size
       data_encoder = tf.reshape(img_features, (self.config.batch_size,
@@ -126,7 +126,7 @@ class DTRN_Model():
           data_encoder, sequence_length=self.sequence_length_placeholder,
           dtype=tf.float32, time_major=False)
 
-     return rnn_outputs
+    return rnn_outputs
 
   def add_projection(self, rnn_outputs):
     with tf.variable_scope('Projection'):
@@ -171,7 +171,7 @@ def main():
   config = Config()
   model = DTRN_Model(config)
   init = tf.initialize_all_variables()
-  saver = tf.train.Saver()
+
   if not os.path.exists(model.config.ckpt_dir):
     os.makedirs(model.config.ckpt_dir)
 
@@ -180,7 +180,7 @@ def main():
 
     # restore previous session
     if model.config.load_ckpt or model.config.test_only:
-      saver.restore(session, model.config.ckpt_dir+'model.ckpt')
+      model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
       logger.info('model restored')
 
     iterator_train = utils.data_iterator(
@@ -220,8 +220,8 @@ def main():
         logger.info('<-------------------->')
         logger.info('average test loss: %f (#batches = %d)',
             np.mean(losses_test), len(losses_test))
-        logger.info(ret_test[1][:10])
-        logger.info(ret_test[2][:10])
+        logger.info(ret_test[1][:5])
+        logger.info(ret_test[2][:5])
         logger.info('<-------------------->')
 
         if model.config.test_only:
@@ -244,13 +244,12 @@ def main():
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
-      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
-          ret_train[1])
+    #   logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+    #       ret_train[1])
 
       if step%model.config.save_every_n_steps == 0:
-        save_path = saver.save(session, model.config.ckpt_dir+'model.ckpt')
+        save_path = model.saver.save(session, model.config.ckpt_dir+'model1.ckpt')
         logger.info('model saved in file: %s', save_path)
-        np.save(model.config.ckpt_dir+'loss.npy', np.array(losses_train))
 
 if __name__ == '__main__':
   main()
