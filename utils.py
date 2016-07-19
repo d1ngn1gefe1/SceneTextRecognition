@@ -84,8 +84,8 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     if max_words_length < word_length:
       max_words_length = word_length
 
-  logger.info('max time: %d', max_time)
-  logger.info('max words length: %d', max_words_length)
+  #logger.info('max time: %d', max_time)
+  #logger.info('max words length: %d', max_words_length)
 
   inputs = np.zeros((batch_size, max_time, height, window_size, depth))
   sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
@@ -118,14 +118,30 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
 
     yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
 
-def conv2d(x, W, b, strides=1):
-    # Conv2D wrapper, with bias and relu activation
-    x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
-    x = tf.nn.bias_add(x, b)
-    return tf.nn.relu(x)
+def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size, embed_size):
+  num_chars = char_imgs.shape[0]
+  height = char_imgs.shape[1]
+  window_size = char_imgs.shape[2]
+  depth = char_imgs.shape[3]
+  num_steps = int(math.ceil(num_chars*num_epochs/batch_size))
 
+  for i in range(num_steps):
+    startIdx = i*batch_size%num_chars
+    endIdx = (i+1)*batch_size%num_chars
 
-def maxpool2d(x, k=2):
-    # MaxPool2D wrapper
-    return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
-                          padding='SAME')
+    inputs = np.zeros((batch_size, height, window_size, depth), dtype=np.uint8)
+    labels = np.zeros((batch_size, embed_size), dtype=np.float32)
+
+    if startIdx < endIdx:
+      inputs = char_imgs[startIdx:endIdx, :, :, :]
+      labels[np.arange(0, batch_size), chars_embed[startIdx:endIdx]] = 1
+    elif endIdx == 0:
+      inputs = char_imgs[startIdx:, :, :, :]
+      labels[np.arange(0, batch_size), chars_embed[startIdx:]] = 1
+    else:
+      inputs = np.concatenate((char_imgs[startIdx:, :, :, :], char_imgs[:endIdx, :, :, :]))
+      labels[np.arange(0, batch_size), np.concatenate((chars_embed[startIdx:], chars_embed[:endIdx]))] = 1
+
+    epoch = i*batch_size/num_chars
+
+    yield (inputs, labels, epoch)

@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 from utils import logger
+from cnn import CNN
 import h5py
 import math
 import os
@@ -43,7 +44,7 @@ class DTRN_Model():
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
-    self.pred = self.add_decoder(self.outputs)
+    self.pred, self.groundtruth = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
@@ -99,49 +100,8 @@ class DTRN_Model():
     self.outputs_mask_placeholder = tf.placeholder(tf.float32,
         shape=[self.max_time, self.config.batch_size, self.config.embed_size])
 
-    # max_time x batch_size x embed_size
+    # float
     self.keep_prob_placeholder = tf.placeholder(tf.float32)
-
-  def CNN(self, x):
-    with tf.variable_scope('conv1') as scope:
-      W_conv1 = tf.get_variable('Weight', [5, 5, 1, 32],
-          initializer=tf.contrib.layers.xavier_initializer())
-      b_conv1 = tf.get_variable('Bias', [32],
-          initializer=tf.constant_initializer(0.1))
-      h_conv1 = tf.nn.relu(tf.nn.conv2d(x, W_conv1, strides=[1, 1, 1, 1],
-          padding='SAME') + b_conv1)
-      h_pool1 = tf.nn.max_pool(h_conv1, ksize=[1, 2, 2, 1],
-          strides=[1, 2, 2, 1], padding='SAME')
-
-    with tf.variable_scope('conv2') as scope:
-      W_conv2 = tf.get_variable('Weight', [5, 5, 32, 64],
-          initializer=tf.contrib.layers.xavier_initializer())
-      b_conv2 = tf.get_variable('Bias', [64],
-          initializer=tf.constant_initializer(0.1))
-      h_conv2 = tf.nn.relu(tf.nn.conv2d(h_pool1, W_conv2, strides=[1, 1, 1, 1],
-          padding='SAME') + b_conv2)
-      h_pool2 = tf.nn.max_pool(h_conv2, ksize=[1, 2, 2, 1],
-          strides=[1, 2, 2, 1], padding='SAME')
-
-    with tf.variable_scope('fc1') as scope:
-      W_fc1 = tf.get_variable('Weight', [7*7*64, 1024],
-          initializer=tf.contrib.layers.xavier_initializer())
-      b_fc1 = tf.get_variable('Bias', [1024],
-          initializer=tf.constant_initializer(0.1))
-      h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
-      h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
-
-    with tf.variable_scope('dropout') as scope:
-      h_fc1_drop = tf.nn.dropout(h_fc1, self.keep_prob_placeholder)
-
-    with tf.variable_scope('fc2') as scope:
-      W_fc2 = tf.get_variable('Weight', [1024, 128],
-          initializer=tf.contrib.layers.xavier_initializer())
-      b_fc2 = tf.get_variable('Bias', [128],
-          initializer=tf.constant_initializer(0.1))
-      y = tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
-
-    return y
 
   def add_model(self):
     self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
@@ -155,7 +115,7 @@ class DTRN_Model():
           self.config.window_size, self.config.depth])
 
       # img_features: batch_size*max_time x feature_size (128)
-      img_features = self.CNN(data_cnn)
+      img_features = CNN(data_cnn, self.config.depth, 128)
 
       # data_encoder: batch_size x max_time x feature_size
       data_encoder = tf.reshape(img_features, (self.config.batch_size,
@@ -166,7 +126,7 @@ class DTRN_Model():
           data_encoder, sequence_length=self.sequence_length_placeholder,
           dtype=tf.float32, time_major=False)
 
-      return rnn_outputs
+     return rnn_outputs
 
   def add_projection(self, rnn_outputs):
     with tf.variable_scope('Projection'):
@@ -179,6 +139,7 @@ class DTRN_Model():
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
           (self.config.batch_size*self.max_time, self.config.lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
+      outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
       outputs = tf.add(outputs, self.outputs_mask_placeholder)
@@ -196,8 +157,10 @@ class DTRN_Model():
   def add_decoder(self, outputs):
     decoded, _ = tf.contrib.ctc.ctc_beam_search_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
+    pred = tf.sparse_tensor_to_dense(decoded[0])
+    groundtruth = tf.sparse_tensor_to_dense(self.labels_placeholder)
 
-    return decoded[0]
+    return (pred, groundtruth)
 
   def add_training_op(self, loss):
     optimizer = tf.train.AdamOptimizer(self.config.lr)
@@ -250,19 +213,24 @@ def main():
                        model.outputs_mask_placeholder: outputs_mask_test,
                        model.keep_prob_placeholder: 1.0}
 
-          ret_test = session.run([model.loss], feed_dict=feed_test)
+          ret_test = session.run([model.loss, model.pred, model.groundtruth],
+              feed_dict=feed_test)
           losses_test.append(ret_test[0])
 
-        logger.info('test loss: %f (#batches = %d)', np.mean(losses_test),
-            len(losses_test))
+        logger.info('<-------------------->')
+        logger.info('average test loss: %f (#batches = %d)',
+            np.mean(losses_test), len(losses_test))
+        logger.info(ret_test[1][:10])
+        logger.info(ret_test[2][:10])
+        logger.info('<-------------------->')
 
         if model.config.test_only:
           return
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
-        logger.info('average loss in epoch %d: %f\n', cur_epoch, np.mean(
-            losses_train[step_epoch:]))
+        logger.info('average training loss in epoch %d: %f\n', cur_epoch,
+            np.mean(losses_train[step_epoch:]))
         #logger.info('average loss overall: %f', np.mean(losses_train))
         step_epoch = step
         cur_epoch = epoch_train

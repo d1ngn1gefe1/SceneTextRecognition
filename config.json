@@ -2,11 +2,11 @@
   "dataset_dir": "/home/local/ANT/zelunluo/IIIT5K/",
   "height": 28,
   "window_size": 28,
-  "depth": 1,
+  "depth": 3,
   "embed_size": 37,
   "stride": 4,
-  "lr": 1e-3,
-  "keep_prob": 0.9,
+  "lr": 1e-5,
+  "keep_prob": 1.0,
   "lstm_size": 128,
   "num_epochs": 2000000,
   "batch_size": 50,
@@ -18,7 +18,7 @@
   "test_only": false,
   "test_every_n_steps": 100,
   "test_size": 150,
-  "visualize": true,
+  "visualize": false,
   "visualize_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/visualize/",
   "gpu": 0
 }
