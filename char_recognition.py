@@ -25,7 +25,7 @@ class Config():
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
-      self.load_ckpt = json_data['load_ckpt']
+      self.cnn_load_ckpt = json_data['cnn_load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.save_every_n_steps = json_data['save_every_n_steps']
       self.test_only = json_data['test_only']
@@ -104,7 +104,7 @@ def main():
     session.run(init)
 
     # restore previous session
-    if model.config.load_ckpt or model.config.test_only:
+    if model.config.cnn_load_ckpt or model.config.test_only:
       if os.path.isfile(model.config.ckpt_dir+'model_cnn.ckpt'):
         model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
         logger.info('model restored')
@@ -166,7 +166,7 @@ def main():
 
       if step%model.config.save_every_n_steps == 0:
         save_path = model.saver.save(session, model.config.ckpt_dir+'model_cnn.ckpt')
-        logger.info('model saved in file: %s', save_path)
+        logger.info('cnn model saved in file: %s', save_path)
 
 if __name__ == '__main__':
   main()

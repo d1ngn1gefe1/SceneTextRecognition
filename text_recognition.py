@@ -27,7 +27,8 @@ class Config():
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
-      self.load_ckpt = json_data['load_ckpt']
+      self.full_load_cnn_ckpt = json_data['full_load_cnn_ckpt']
+      self.full_load_ckpt = json_data['full_load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.save_every_n_steps = json_data['save_every_n_steps']
       self.test_only = json_data['test_only']
@@ -179,9 +180,13 @@ def main():
     session.run(init)
 
     # restore previous session
-    if model.config.load_ckpt or model.config.test_only:
+    if model.config.full_load_cnn_ckpt or model.config.test_only:
       model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
-      logger.info('model restored')
+      logger.info('cnn model restored')
+    elif model.config.full_load_ckpt or model.config.test_only:
+      model.saver = tf.train.Saver()
+      model.saver.restore(session, model.config.ckpt_dir+'model_full.ckpt')
+      logger.info('full model restored')
 
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
@@ -229,7 +234,7 @@ def main():
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
-        logger.info('average training loss in epoch %d: %f\n', cur_epoch,
+        logger.info('average training loss in epoch %d: %f', cur_epoch,
             np.mean(losses_train[step_epoch:]))
         #logger.info('average loss overall: %f', np.mean(losses_train))
         step_epoch = step
@@ -244,12 +249,12 @@ def main():
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
-    #   logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
-    #       ret_train[1])
+      # logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+      # ret_train[1])
 
       if step%model.config.save_every_n_steps == 0:
-        save_path = model.saver.save(session, model.config.ckpt_dir+'model1.ckpt')
-        logger.info('model saved in file: %s', save_path)
+        save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
+        logger.info('full model saved in file: %s', save_path)
 
 if __name__ == '__main__':
   main()
