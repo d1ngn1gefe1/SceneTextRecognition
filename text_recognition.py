@@ -187,9 +187,10 @@ def main():
     session.run(init)
 
     # restore previous session
-    if model.config.full_load_cnn_ckpt or model.config.test_only:
+    if model.config.full_load_cnn_ckpt:
       model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
       logger.info('cnn model restored')
+      model.saver = tf.train.Saver()
     elif model.config.full_load_ckpt or model.config.test_only:
       model.saver = tf.train.Saver()
       model.saver.restore(session, model.config.ckpt_dir+'model_full.ckpt')
