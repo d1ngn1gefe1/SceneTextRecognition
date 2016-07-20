@@ -44,4 +44,6 @@ def CNN(x, depth, output_size, keep_prob):
                           "W_fc1": W_fc1, "b_fc1": b_fc1,
                           "W_fc2": W_fc2, "b_fc2": b_fc2})
 
-  return logits, saver
+  variables = [W_conv1, b_conv1, W_conv2, b_conv2, W_fc1, b_fc1, W_fc2, b_fc2]
+
+  return logits, saver, variables

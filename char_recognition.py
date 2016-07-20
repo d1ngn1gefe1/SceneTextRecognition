@@ -100,7 +100,10 @@ def main():
   if not os.path.exists(model.config.ckpt_dir):
     os.makedirs(model.config.ckpt_dir)
 
-  with tf.Session() as session:
+  config = tf.ConfigProto()
+  config.gpu_options.per_process_gpu_memory_fraction = 0.4
+
+  with tf.Session(config=config) as session:
     session.run(init)
 
     # restore previous session

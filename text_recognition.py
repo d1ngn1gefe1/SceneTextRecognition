@@ -116,7 +116,8 @@ class DTRN_Model():
           self.config.window_size, self.config.depth])
 
       # img_features: batch_size*max_time x feature_size (128)
-      img_features, self.saver = CNN(data_cnn, self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
+      img_features, self.saver, self.variables_CNN = CNN(data_cnn,
+          self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
 
       # data_encoder: batch_size x max_time x feature_size
       data_encoder = tf.reshape(img_features, (self.config.batch_size,
@@ -164,8 +165,14 @@ class DTRN_Model():
     return (pred, groundtruth)
 
   def add_training_op(self, loss):
-    optimizer = tf.train.AdamOptimizer(self.config.lr)
-    train_op = optimizer.minimize(loss)
+    self.variables_LSTM_CTC = tf.trainable_variables()
+    for var in self.variables_CNN:
+      self.variables_LSTM_CTC.remove(var)
+
+    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.1).minimize(loss, var_list=self.variables_CNN)
+    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+    train_op = tf.group(train_op1, train_op2)
+
     return train_op
 
 def main():
