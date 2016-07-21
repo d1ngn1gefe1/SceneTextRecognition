@@ -31,9 +31,8 @@ class Config():
       self.full_load_cnn_ckpt = json_data['full_load_cnn_ckpt']
       self.full_load_ckpt = json_data['full_load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
-      self.save_every_n_steps = json_data['save_every_n_steps']
       self.test_only = json_data['test_only']
-      self.test_every_n_steps = json_data['test_every_n_steps']
+      self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
       self.test_size = json_data['test_size']
       self.test_size = self.test_size-self.test_size%self.batch_size
       self.gpu = json_data['gpu']
@@ -175,7 +174,7 @@ class DTRN_Model():
     for var in self.variables_CNN:
       self.variables_LSTM_CTC.remove(var)
 
-    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.1).minimize(loss, var_list=self.variables_CNN)
+    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.01).minimize(loss, var_list=self.variables_CNN)
     train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
     train_op = tf.group(train_op1, train_op2)
 
@@ -191,16 +190,20 @@ def main():
 
   with tf.Session() as session:
     session.run(init)
+    best_loss = 10000
 
     # restore previous session
     if model.config.full_load_cnn_ckpt:
-      model.saver.restore(session, model.config.ckpt_dir+'model_cnn.ckpt')
+      model.saver.restore(session, model.config.ckpt_dir+'model_cnn_best.ckpt')
       logger.info('cnn model restored')
       model.saver = tf.train.Saver()
     elif model.config.full_load_ckpt or model.config.test_only:
       model.saver = tf.train.Saver()
-      model.saver.restore(session, model.config.ckpt_dir+'model_full.ckpt')
+      model.saver.restore(session, model.config.ckpt_dir+'model_full_best.ckpt')
+      if os.path.isfile(model.config.ckpt_dir+'full_best_loss.npy'):
+        best_loss = np.load(model.config.ckpt_dir+'full_best_loss.npy')[0]
       logger.info('full model restored')
+      logger.info('best loss: '+str(best_loss))
 
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
@@ -218,7 +221,7 @@ def main():
         outputs_mask_train, epoch_train) in enumerate(iterator_train):
 
       # test
-      if step%model.config.test_every_n_steps == 0:
+      if step%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
@@ -237,9 +240,11 @@ def main():
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
 
+        cur_loss = np.mean(losses_test)
+
         logger.info('<-------------------->')
         logger.info('average test loss: %f (#batches = %d)',
-            np.mean(losses_test), len(losses_test))
+            cur_loss, len(losses_test))
         for i in range(10):
           logger.info(ret_test[1][i][ret_test[1][i] != model.config.embed_size-1])
           logger.info(ret_test[2][i][ret_test[2][i] != model.config.embed_size-1])
@@ -249,6 +254,15 @@ def main():
 
         if model.config.test_only:
           return
+
+        if cur_loss < best_loss:
+          best_loss = cur_loss
+          save_path = model.saver.save(session, model.config.ckpt_dir+'model_full_best.ckpt')
+          np.save(model.config.ckpt_dir+'full_best_loss.npy', np.array(best_loss))
+          logger.info('cnn model saved in file: %s', save_path)
+        else:
+          save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
+          logger.info('cnn model saved in file: %s', save_path)
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
@@ -269,10 +283,6 @@ def main():
       losses_train.append(ret_train[1])
       # logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
       # ret_train[1])
-
-      if step%model.config.save_every_n_steps == 0:
-        save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
-        logger.info('full model saved in file: %s', save_path)
 
 if __name__ == '__main__':
   main()
