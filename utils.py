@@ -3,6 +3,7 @@ import tensorflow as tf
 import math
 import cv2
 import logging
+from random import randint
 
 np.set_printoptions(threshold=np.nan)
 
@@ -70,11 +71,11 @@ def indices2word(indices):
   return word
 
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
-    embed_size):
+    embed_size, jittering):
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
-  height = imgs.shape[2]
-  window_size = imgs.shape[3]
+  height = imgs.shape[2]-jittering
+  window_size = imgs.shape[3]-jittering
   depth = imgs.shape[4]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
 
@@ -94,6 +95,9 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
   for i in range(num_steps):
     startIdx = i*batch_size%num_examples
     endIdx = (i+1)*batch_size%num_examples
+
+    rand1 = randint(0, jittering)
+    rand2 = randint(0, jittering)
 
     if startIdx < endIdx:
       inputs = imgs[startIdx:endIdx]
@@ -118,10 +122,11 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
 
     yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
 
-def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size, embed_size):
+def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
+    embed_size, jittering):
   num_chars = char_imgs.shape[0]
-  height = char_imgs.shape[1]
-  window_size = char_imgs.shape[2]
+  height = char_imgs.shape[1]-jittering
+  window_size = char_imgs.shape[2]-jittering
   depth = char_imgs.shape[3]
   num_steps = int(math.ceil(num_chars*num_epochs/batch_size))
 
@@ -132,15 +137,23 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size, embed_siz
     inputs = np.zeros((batch_size, height, window_size, depth), dtype=np.uint8)
     labels = np.zeros((batch_size, embed_size), dtype=np.float32)
 
+    rand1 = randint(0, jittering)
+    rand2 = randint(0, jittering)
+
     if startIdx < endIdx:
-      inputs = char_imgs[startIdx:endIdx, :, :, :]
+      inputs = char_imgs[startIdx:endIdx, rand1:rand1+height,
+          rand2:rand2+window_size, :]
       labels[np.arange(0, batch_size), chars_embed[startIdx:endIdx]] = 1
     elif endIdx == 0:
-      inputs = char_imgs[startIdx:, :, :, :]
+      inputs = char_imgs[startIdx:, rand1:rand1+height,
+          rand2:rand2+window_size, :]
       labels[np.arange(0, batch_size), chars_embed[startIdx:]] = 1
     else:
-      inputs = np.concatenate((char_imgs[startIdx:, :, :, :], char_imgs[:endIdx, :, :, :]))
-      labels[np.arange(0, batch_size), np.concatenate((chars_embed[startIdx:], chars_embed[:endIdx]))] = 1
+      inputs = np.concatenate((char_imgs[startIdx:, rand1:rand1+height,
+          rand2:rand2+window_size, :], char_imgs[:endIdx, rand1:rand1+height,
+          rand2:rand2+window_size, :]))
+      labels[np.arange(0, batch_size), np.concatenate((chars_embed[startIdx:],
+          chars_embed[:endIdx]))] = 1
 
     epoch = i*batch_size/num_chars
 

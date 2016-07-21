@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 from utils import logger
-from cnn import CNN
+import cnn
 import h5py
 import math
 import os
@@ -19,6 +19,7 @@ class Config():
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
       self.embed_size = json_data['embed_size']
+      self.jittering = json_data['jittering']
       self.stride = json_data['stride']
       self.lr = json_data['lr']
       self.keep_prob = json_data['keep_prob']
@@ -45,7 +46,7 @@ class DTRN_Model():
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
-    self.pred, self.groundtruth = self.add_decoder(self.outputs)
+    self.pred, self.groundtruth, self.dists = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
@@ -116,7 +117,7 @@ class DTRN_Model():
           self.config.window_size, self.config.depth])
 
       # img_features: batch_size*max_time x feature_size (128)
-      img_features, self.saver, self.variables_CNN = CNN(data_cnn,
+      img_features, self.saver, self.variables_CNN = cnn.CNN(data_cnn,
           self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
 
       # data_encoder: batch_size x max_time x feature_size
@@ -159,10 +160,15 @@ class DTRN_Model():
   def add_decoder(self, outputs):
     decoded, _ = tf.contrib.ctc.ctc_beam_search_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
-    pred = tf.sparse_tensor_to_dense(decoded[0])
-    groundtruth = tf.sparse_tensor_to_dense(self.labels_placeholder)
+    decoded = tf.to_int32(decoded[0])
 
-    return (pred, groundtruth)
+    pred = tf.sparse_tensor_to_dense(decoded,
+        default_value=self.config.embed_size-1)
+    groundtruth = tf.sparse_tensor_to_dense(self.labels_placeholder,
+        default_value=self.config.embed_size-1)
+    dists = tf.edit_distance(decoded, self.labels_placeholder)
+
+    return (pred, groundtruth, dists)
 
   def add_training_op(self, loss):
     self.variables_LSTM_CTC = tf.trainable_variables()
@@ -199,7 +205,7 @@ def main():
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time,
-        model.config.embed_size)
+        model.config.embed_size, model.jittering)
 
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
@@ -216,7 +222,8 @@ def main():
         losses_test = []
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
-          1, model.config.batch_size, model.max_time, model.config.embed_size)
+          1, model.config.batch_size, model.max_time,
+          model.config.embed_size, model.jittering)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             outputs_mask_test, epoch_test) in enumerate(iterator_test):
@@ -226,15 +233,18 @@ def main():
                        model.outputs_mask_placeholder: outputs_mask_test,
                        model.keep_prob_placeholder: 1.0}
 
-          ret_test = session.run([model.loss, model.pred, model.groundtruth],
+          ret_test = session.run([model.loss, model.pred, model.groundtruth, model.dists],
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
 
         logger.info('<-------------------->')
         logger.info('average test loss: %f (#batches = %d)',
             np.mean(losses_test), len(losses_test))
-        logger.info(ret_test[1][:5])
-        logger.info(ret_test[2][:5])
+        for i in range(10):
+          logger.info(ret_test[1][i][ret_test[1][i] != model.config.embed_size-1])
+          logger.info(ret_test[2][i][ret_test[2][i] != model.config.embed_size-1])
+          logger.info(ret_test[3][i])
+          logger.info('\n')
         logger.info('<-------------------->')
 
         if model.config.test_only:
