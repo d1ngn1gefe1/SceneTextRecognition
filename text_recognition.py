@@ -208,7 +208,7 @@ def main():
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time,
-        model.config.embed_size, model.jittering)
+        model.config.embed_size, model.config.jittering)
 
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
@@ -226,7 +226,7 @@ def main():
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
           1, model.config.batch_size, model.max_time,
-          model.config.embed_size, model.jittering)
+          model.config.embed_size, model.config.jittering)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             outputs_mask_test, epoch_test) in enumerate(iterator_test):

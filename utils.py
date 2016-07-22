@@ -100,15 +100,19 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     rand2 = randint(0, jittering)
 
     if startIdx < endIdx:
-      inputs = imgs[startIdx:endIdx]
+      inputs = imgs[startIdx:endIdx, :, rand1:rand1+height,
+          rand2:rand2+window_size, :]
       sequence_length = time[startIdx:endIdx] # number of windows
       labels = words_embed[startIdx:endIdx]
     elif endIdx == 0:
-      inputs = imgs[startIdx:]
+      inputs = imgs[startIdx:, :, rand1:rand1+height,
+          rand2:rand2+window_size, :]
       sequence_length = time[startIdx:]
       labels = words_embed[startIdx:]
     else:
-      inputs = np.concatenate((imgs[startIdx:], imgs[:endIdx]))
+      inputs = np.concatenate((imgs[startIdx:, :, rand1:rand1+height,
+          rand2:rand2+window_size, :], imgs[:endIdx, :, rand1:rand1+height,
+          rand2:rand2+window_size, :]))
       sequence_length = np.concatenate((time[startIdx:], time[:endIdx]))
       labels = words_embed[startIdx:]+words_embed[:endIdx]
 
