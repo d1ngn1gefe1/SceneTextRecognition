@@ -19,7 +19,7 @@ class Config():
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
       self.embed_size = json_data['embed_size']
-      self.jittering = json_data['jittering']
+      self.jittering_size = int(json_data['jittering_percent']*self.height)
       self.lr = json_data['lr']
       self.keep_prob = json_data['keep_prob']
       self.num_epochs = json_data['num_epochs']
@@ -74,7 +74,8 @@ class CNN_Model():
   def add_model(self):
     with tf.variable_scope('CNN') as scope:
       logits, saver, variables = cnn.CNN(self.inputs_placeholder,
-          self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
+          self.config.height, self.config.window_size, self.config.depth,
+          self.config.embed_size, self.keep_prob_placeholder)
 
     return logits, saver
 
@@ -118,7 +119,7 @@ def main():
     iterator_train = utils.data_iterator_char(model.char_imgs_train,
         model.chars_embed_train, model.config.num_epochs,
         model.config.batch_size, model.config.embed_size,
-        model.config.jittering)
+        model.config.jittering_size, False)
 
     num_chars = model.char_imgs_train.shape[0]
 
@@ -133,7 +134,7 @@ def main():
         accuracies_test = []
         iterator_test = utils.data_iterator_char(model.char_imgs_test,
             model.chars_embed_test, 1, model.config.batch_size,
-            model.config.embed_size, model.config.jittering)
+            model.config.embed_size, model.config.jittering_size, True)
 
         for step_test, (inputs_test, labels_test, epoch_test) in enumerate(iterator_test):
           feed_test = {model.inputs_placeholder: inputs_test,

@@ -165,7 +165,7 @@ class DTRN_Model():
         default_value=self.config.embed_size-1)
     groundtruth = tf.sparse_tensor_to_dense(self.labels_placeholder,
         default_value=self.config.embed_size-1)
-    dists = tf.edit_distance(decoded, self.labels_placeholder)
+    dists = tf.edit_distance(decoded, self.labels_placeholder, normalize=False)
 
     return (pred, groundtruth, dists)
 
@@ -201,7 +201,7 @@ def main():
       model.saver = tf.train.Saver()
       model.saver.restore(session, model.config.ckpt_dir+'model_full_best.ckpt')
       if os.path.isfile(model.config.ckpt_dir+'full_best_loss.npy'):
-        best_loss = np.load(model.config.ckpt_dir+'full_best_loss.npy')[0]
+        best_loss = np.load(model.config.ckpt_dir+'full_best_loss.npy')
       logger.info('full model restored')
       logger.info('best loss: '+str(best_loss))
 
@@ -223,10 +223,11 @@ def main():
       # test
       if step%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
+        dists_test = np.zeros((model.config.batch_size))
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
           1, model.config.batch_size, model.max_time,
-          model.config.embed_size, model.config.jittering)
+          model.config.embed_size, 0)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             outputs_mask_test, epoch_test) in enumerate(iterator_test):
@@ -236,20 +237,21 @@ def main():
                        model.outputs_mask_placeholder: outputs_mask_test,
                        model.keep_prob_placeholder: 1.0}
 
-          ret_test = session.run([model.loss, model.pred, model.groundtruth, model.dists],
+          ret_test = session.run([model.loss, model.dists],
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
+          dists_test = np.concatenate((dists_test, ret_test[1]))
 
         cur_loss = np.mean(losses_test)
+        cur_dist = np.mean(dists_test)
+        stats = np.bincount(dists_test.astype(int))
 
         logger.info('<-------------------->')
         logger.info('average test loss: %f (#batches = %d)',
             cur_loss, len(losses_test))
-        for i in range(10):
-          logger.info(ret_test[1][i][ret_test[1][i] != model.config.embed_size-1])
-          logger.info(ret_test[2][i][ret_test[2][i] != model.config.embed_size-1])
-          logger.info(ret_test[3][i])
-          logger.info('\n')
+        logger.info('average edit distance: %f (#batches = %d)',
+            cur_dist, len(dists_test))
+        logger.info(stats)
         logger.info('<-------------------->')
 
         if model.config.test_only:

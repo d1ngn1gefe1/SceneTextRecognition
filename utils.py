@@ -74,8 +74,8 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     embed_size, jittering):
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
-  height = imgs.shape[2]-jittering
-  window_size = imgs.shape[3]-jittering
+  height = imgs.shape[2]-10
+  window_size = imgs.shape[3]-10
   depth = imgs.shape[4]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
 
@@ -98,6 +98,10 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
 
     rand1 = randint(0, jittering)
     rand2 = randint(0, jittering)
+
+    if jittering == 0:
+      rand1 = 5
+      rand2 = 5
 
     if startIdx < endIdx:
       inputs = imgs[startIdx:endIdx, :, rand1:rand1+height,
@@ -127,10 +131,10 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
 
 def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
-    embed_size, jittering):
+    embed_size, jittering_size, is_test):
   num_chars = char_imgs.shape[0]
-  height = char_imgs.shape[1]-jittering
-  window_size = char_imgs.shape[2]-jittering
+  height = char_imgs.shape[1]-jittering_size
+  window_size = char_imgs.shape[2]-jittering_size
   depth = char_imgs.shape[3]
   num_steps = int(math.ceil(num_chars*num_epochs/batch_size))
 
@@ -141,8 +145,13 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     inputs = np.zeros((batch_size, height, window_size, depth), dtype=np.uint8)
     labels = np.zeros((batch_size, embed_size), dtype=np.float32)
 
-    rand1 = randint(0, jittering)
-    rand2 = randint(0, jittering)
+    if is_test:
+      rand1 = int(jittering_size/2)
+      rand2 = int(jittering_size/2)
+    else:
+      rand1 = randint(0, jittering_size)
+      rand2 = randint(0, jittering_size)
+
 
     if startIdx < endIdx:
       inputs = char_imgs[startIdx:endIdx, rand1:rand1+height,

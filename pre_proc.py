@@ -155,8 +155,10 @@ def main():
   with open('config.json', 'r') as json_file:
     json_data = json.load(json_file)
     dataset_dir = json_data['dataset_dir']
-    height = json_data['height']+json_data['jittering']
-    window_size = json_data['window_size']+json_data['jittering']
+    height = json_data['height']+ \
+        int(json_data['height']*json_data['jittering_percent'])
+    window_size = json_data['window_size']+ \
+        int(json_data['height']*json_data['jittering_percent'])
     depth = json_data['depth']
     embed_size = json_data['embed_size']
     stride = json_data['stride']
