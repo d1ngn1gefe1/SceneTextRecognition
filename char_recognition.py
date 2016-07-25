@@ -30,7 +30,8 @@ class Config():
       self.cnn_load_ckpt = json_data['cnn_load_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.test_only = json_data['test_only']
-      self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
+      self.test_and_save_every_n_steps = \
+          json_data['test_and_save_every_n_steps']
       self.visualize = json_data['visualize']
       self.visualize_dir = json_data['visualize_dir']
 
@@ -54,8 +55,10 @@ class CNN_Model():
     filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
     f_train = h5py.File(filename_train, 'r')
     self.char_imgs_train = np.array(f_train.get('char_imgs'), dtype=np.uint8)
-    self.chars_embed_train = np.array(f_train.get('chars_embed'), dtype=np.uint8)
-    logger.info('loading training data (%d characters)', self.char_imgs_train.shape[0])
+    self.chars_embed_train = np.array(f_train.get('chars_embed'),
+        dtype=np.uint8)
+    logger.info('loading training data (%d characters)',
+        self.char_imgs_train.shape[0])
     f_train.close()
 
     if self.config.debug:
@@ -79,14 +82,15 @@ class CNN_Model():
   def add_model(self):
     with tf.variable_scope('CNN') as scope:
       logits, self.variables_spatial_transformer, self.variables_CNN, \
-          self.h_trans = cnn.CNN(self.inputs_placeholder, self.config.height,
+          self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height,
           self.config.window_size, self.config.depth, self.config.embed_size,
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
 
     return logits
 
   def add_loss_op(self, logits):
-    losses = tf.nn.softmax_cross_entropy_with_logits(logits, self.labels_placeholder)
+    losses = tf.nn.softmax_cross_entropy_with_logits(logits,
+        self.labels_placeholder)
     loss = tf.reduce_mean(losses)
 
     self.diff = tf.argmax(logits, 1)-tf.argmax(self.labels_placeholder, 1)
@@ -94,8 +98,10 @@ class CNN_Model():
     return loss
 
   def add_training_op(self, loss):
-    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.1).minimize(loss, var_list=self.variables_spatial_transformer)
-    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_CNN)
+    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.1).minimize(loss,
+        var_list=self.variables_spatial_transformer)
+    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+        var_list=self.variables_CNN)
     train_op = tf.group(train_op1, train_op2)
 
     return train_op
@@ -109,12 +115,12 @@ def main():
     os.makedirs(model.config.ckpt_dir)
 
   config = tf.ConfigProto()
-  config.gpu_options.per_process_gpu_memory_fraction = 0.4
+  config.gpu_options.per_process_gpu_memory_fraction = 1.0
 
   with tf.Session(config=config) as session:
     session.run(init)
     best_loss = 10000
-    best_accuracy = 10000
+    best_accuracy = 0
     saver = tf.train.Saver()
 
     # restore previous session
@@ -140,7 +146,8 @@ def main():
     accuracies_train = []
     cur_epoch = 0
     step_epoch = 0
-    for step, (inputs_train, labels_train, epoch_train) in enumerate(iterator_train):
+    for step, (inputs_train, labels_train, epoch_train) in \
+        enumerate(iterator_train):
       # test
       if step%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
@@ -149,19 +156,24 @@ def main():
             model.chars_embed_test, 1, model.config.batch_size,
             model.config.embed_size, model.config.jittering_size, True)
 
-        for step_test, (inputs_test, labels_test, epoch_test) in enumerate(iterator_test):
+        for step_test, (inputs_test, labels_test, epoch_test) in \
+            enumerate(iterator_test):
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_test,
                        model.keep_prob_placeholder: 1.0,
                        model.keep_prob_transformer_placeholder: 1.0}
 
-          ret_test = session.run([model.loss, model.diff, model.h_trans],feed_dict=feed_test)
+          ret_test = session.run([model.loss, model.diff, model.x_trans],
+              feed_dict=feed_test)
           losses_test.append(ret_test[0])
-          accuracies_test.append(float(np.sum(ret_test[1] == 0))/ret_test[1].shape[0])
+          accuracies_test.append(float(np.sum(ret_test[1] == 0))/\
+              ret_test[1].shape[0])
 
           if model.config.visualize and step_test < 10:
-            utils.save_imgs(inputs_test, model.config.visualize_dir, 'original'+str(step_test)+'-')
-            utils.save_imgs(ret_test[2], model.config.visualize_dir, 'trans'+str(step_test)+'-')
+            utils.save_imgs(inputs_test, model.config.visualize_dir,
+                'original'+str(step_test)+'-')
+            utils.save_imgs(ret_test[2], model.config.visualize_dir,
+                'trans'+str(step_test)+'-')
 
         cur_loss = np.mean(losses_test)
         cur_accuracy = np.mean(accuracies_test)
@@ -169,18 +181,23 @@ def main():
         if model.config.test_only:
           return
 
+        if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
+          save_path = saver.save(session, model.config.ckpt_dir+ \
+              'model_cnn.ckpt')
+          logger.info('cnn model saved in file: %s', save_path)
         if cur_loss < best_loss:
           best_loss = cur_loss
-          save_path = saver.save(session, model.config.ckpt_dir+'model_cnn_best_loss.ckpt')
-          np.save(model.config.ckpt_dir+'cnn_best_loss.npy', np.array(best_loss))
+          save_path = saver.save(session, model.config.ckpt_dir+ \
+              'model_cnn_best_loss.ckpt')
+          np.save(model.config.ckpt_dir+'cnn_best_loss.npy',
+              np.array(best_loss))
           logger.info('cnn model saved in file: %s', save_path)
         if cur_accuracy > best_accuracy:
           best_accuracy = cur_accuracy
-          save_path = saver.save(session, model.config.ckpt_dir+'model_cnn_best_accuracy.ckpt')
-          np.save(model.config.ckpt_dir+'cnn_best_accuracy.npy', np.array(best_accuracy))
-          logger.info('cnn model saved in file: %s', save_path)
-        if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
-          save_path = saver.save(session, model.config.ckpt_dir+'model_cnn.ckpt')
+          save_path = saver.save(session, model.config.ckpt_dir+ \
+              'model_cnn_best_accuracy.ckpt')
+          np.save(model.config.ckpt_dir+'cnn_best_accuracy.npy',
+              np.array(best_accuracy))
           logger.info('cnn model saved in file: %s', save_path)
 
         logger.info('<-------------------->')
@@ -204,11 +221,14 @@ def main():
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_train,
                     model.keep_prob_placeholder: model.config.keep_prob,
-                    model.keep_prob_transformer_placeholder: model.config.keep_prob_transformer}
+                    model.keep_prob_transformer_placeholder: \
+                        model.config.keep_prob_transformer}
 
-      ret_train = session.run([model.train_op, model.loss, model.diff], feed_dict=feed_train)
+      ret_train = session.run([model.train_op, model.loss, model.diff],
+          feed_dict=feed_train)
       losses_train.append(ret_train[1])
-      accuracies_train.append(float(np.sum(ret_train[2] == 0))/ret_train[2].shape[0])
+      accuracies_train.append(float(np.sum(ret_train[2] == 0))/\
+          ret_train[2].shape[0])
 
 if __name__ == '__main__':
   main()
