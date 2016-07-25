@@ -3,6 +3,7 @@ import tensorflow as tf
 import math
 import cv2
 import logging
+import os
 from random import randint
 
 np.set_printoptions(threshold=np.nan)
@@ -171,3 +172,10 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     epoch = i*batch_size/num_chars
 
     yield (inputs, labels, epoch)
+
+def save_imgs(imgs, dir, name):
+  if not os.path.exists(dir):
+    os.makedirs(dir)
+
+  for i, img in enumerate(imgs):
+    cv2.imwrite(dir+name+str(i)+'.jpg', img)
