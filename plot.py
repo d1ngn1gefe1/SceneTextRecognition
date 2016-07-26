@@ -14,9 +14,9 @@ num_epoch = 3000
 for i, line in enumerate(open('debug.log', 'r')):
   if i < start:
     continue
-  if re.search(r'average training loss in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line):
+  if re.search(r'training loss in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line):
     losses_train.append(float(re.search(r'average training loss in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line).group(2)))
-  elif re.search(r'average training accuracy in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line):
+  elif re.search(r'training accuracy in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line):
     accuracies_train.append(float(re.search(r'average training accuracy in epoch (\d+): ([-+]?\d*\.\d+|\d+)', line).group(2)))
   elif re.search(r'test loss: ([-+]?\d*\.\d+|\d+)', line) and not re.search(r'best test loss: ([-+]?\d*\.\d+|\d+)', line):
     losses_test.append(float(re.search(r'test loss: ([-+]?\d*\.\d+|\d+)', line).group(1)))
