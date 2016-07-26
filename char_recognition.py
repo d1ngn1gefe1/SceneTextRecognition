@@ -98,7 +98,7 @@ class CNN_Model():
     return loss
 
   def add_training_op(self, loss):
-    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.1).minimize(loss,
+    train_op1 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
         var_list=self.variables_spatial_transformer)
     train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
         var_list=self.variables_CNN)
@@ -127,8 +127,8 @@ def main():
 
     # restore previous session
     if model.config.cnn_load_ckpt or model.config.test_only:
-      if os.path.isfile(model.config.ckpt_dir+'model_cnn_best_loss.ckpt'):
-        saver.restore(session, model.config.ckpt_dir+'model_cnn_best_loss.ckpt')
+      if os.path.isfile(model.config.ckpt_dir+'model_cnn_best_accuracy.ckpt'):
+        saver.restore(session, model.config.ckpt_dir+'model_cnn_best_accuracy.ckpt')
         logger.info('model restored')
       if os.path.isfile(model.config.ckpt_dir+'cnn_best_loss.npy'):
         best_loss = np.load(model.config.ckpt_dir+'cnn_best_loss.npy')
@@ -136,13 +136,13 @@ def main():
       if os.path.isfile(model.config.ckpt_dir+'cnn_corr_accuracy.npy'):
         corresponding_accuracy = np.load(model.config.ckpt_dir+ \
             'cnn_corr_accuracy.npy')
-        logger.info('corresponding accuracy: '+str(best_accuracy))
+        logger.info('corresponding accuracy: '+str(corresponding_accuracy))
       if os.path.isfile(model.config.ckpt_dir+'cnn_best_accuracy.npy'):
         best_accuracy = np.load(model.config.ckpt_dir+'cnn_best_accuracy.npy')
         logger.info('best accuracy: '+str(best_accuracy))
       if os.path.isfile(model.config.ckpt_dir+'cnn_corr_loss.npy'):
         corresponding_loss = np.load(model.config.ckpt_dir+'cnn_corr_loss.npy')
-        logger.info('corresponding loss: '+str(best_loss))
+        logger.info('corresponding loss: '+str(corresponding_loss))
 
     iterator_train = utils.data_iterator_char(model.char_imgs_train,
         model.chars_embed_train, model.config.num_epochs,
