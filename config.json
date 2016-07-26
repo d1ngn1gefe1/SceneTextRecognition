@@ -1,5 +1,6 @@
 {
   "dataset_dir": "/home/local/ANT/zelunluo/IIIT5K/",
+  "train_ratio": 0.8,
   "height": 32,
   "window_size": 32,
   "depth": 3,
@@ -14,7 +15,7 @@
   "batch_size": 64,
   "debug": false,
   "debug_size": 64,
-  "cnn_load_ckpt": false,
+  "cnn_load_ckpt": true,
   "full_load_ckpt": true,
   "full_load_cnn_ckpt": false,
   "ckpt_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/checkpoint/",

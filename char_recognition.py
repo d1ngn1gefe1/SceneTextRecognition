@@ -1,7 +1,7 @@
+from utils import logger
 import tensorflow as tf
 import numpy as np
 import utils
-from utils import logger
 import cnn
 import h5py
 import math
@@ -71,7 +71,7 @@ class CNN_Model():
         shape=[self.config.batch_size, self.config.height,
         self.config.window_size, self.config.depth])
 
-    # batch_size
+    # batch_size x embed_size
     self.labels_placeholder = tf.placeholder(tf.float32,
         shape=[self.config.batch_size, self.config.embed_size])
 
@@ -119,8 +119,10 @@ def main():
 
   with tf.Session(config=config) as session:
     session.run(init)
-    best_loss = 10000
+    best_loss = float('inf')
+    corresponding_accuracy = 0 # accuracy corresponding to the best loss
     best_accuracy = 0
+    corresponding_loss = float('inf') # loss corresponding to the best accuracy
     saver = tf.train.Saver()
 
     # restore previous session
@@ -131,9 +133,16 @@ def main():
       if os.path.isfile(model.config.ckpt_dir+'cnn_best_loss.npy'):
         best_loss = np.load(model.config.ckpt_dir+'cnn_best_loss.npy')
         logger.info('best loss: '+str(best_loss))
+      if os.path.isfile(model.config.ckpt_dir+'cnn_corr_accuracy.npy'):
+        corresponding_accuracy = np.load(model.config.ckpt_dir+ \
+            'cnn_corr_accuracy.npy')
+        logger.info('corresponding accuracy: '+str(best_accuracy))
       if os.path.isfile(model.config.ckpt_dir+'cnn_best_accuracy.npy'):
         best_accuracy = np.load(model.config.ckpt_dir+'cnn_best_accuracy.npy')
         logger.info('best accuracy: '+str(best_accuracy))
+      if os.path.isfile(model.config.ckpt_dir+'cnn_corr_loss.npy'):
+        corresponding_loss = np.load(model.config.ckpt_dir+'cnn_corr_loss.npy')
+        logger.info('corresponding loss: '+str(best_loss))
 
     iterator_train = utils.data_iterator_char(model.char_imgs_train,
         model.chars_embed_train, model.config.num_epochs,
@@ -146,9 +155,12 @@ def main():
     accuracies_train = []
     cur_epoch = 0
     step_epoch = 0
+
+    # each step corresponds to one batch
     for step, (inputs_train, labels_train, epoch_train) in \
         enumerate(iterator_train):
-      # test
+
+      # test & save model
       if step%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
         accuracies_test = []
@@ -169,6 +181,7 @@ def main():
           accuracies_test.append(float(np.sum(ret_test[1] == 0))/\
               ret_test[1].shape[0])
 
+          # visualize the STN results
           if model.config.visualize and step_test < 10:
             utils.save_imgs(inputs_test, model.config.visualize_dir,
                 'original'+str(step_test)+'-')
@@ -181,23 +194,31 @@ def main():
         if model.config.test_only:
           return
 
+        # save three models: current model, model with the lowest loss, model
+        # with the highest accuracy
         if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
           save_path = saver.save(session, model.config.ckpt_dir+ \
               'model_cnn.ckpt')
           logger.info('cnn model saved in file: %s', save_path)
         if cur_loss < best_loss:
           best_loss = cur_loss
+          corresponding_accuracy = cur_accuracy
           save_path = saver.save(session, model.config.ckpt_dir+ \
               'model_cnn_best_loss.ckpt')
           np.save(model.config.ckpt_dir+'cnn_best_loss.npy',
               np.array(best_loss))
+          np.save(model.config.ckpt_dir+'cnn_corr_accuracy.npy',
+              np.array(corresponding_accuracy))
           logger.info('cnn model saved in file: %s', save_path)
         if cur_accuracy > best_accuracy:
           best_accuracy = cur_accuracy
+          corresponding_loss = cur_loss
           save_path = saver.save(session, model.config.ckpt_dir+ \
               'model_cnn_best_accuracy.ckpt')
           np.save(model.config.ckpt_dir+'cnn_best_accuracy.npy',
               np.array(best_accuracy))
+          np.save(model.config.ckpt_dir+'cnn_corr_loss.npy',
+              np.array(corresponding_loss))
           logger.info('cnn model saved in file: %s', save_path)
 
         logger.info('<-------------------->')
@@ -205,19 +226,22 @@ def main():
             cur_loss, len(losses_test))
         logger.info('test accuracy: %f (#batches = %d)',
             cur_accuracy, len(accuracies_test))
-        logger.info('best test loss: %f', best_loss)
-        logger.info('best test accuracy: %f', best_accuracy)
+        logger.info('best test loss: %f, corresponding accuracy: %f',
+            best_loss, corresponding_accuracy)
+        logger.info('best test accuracy: %f, corresponding loss: %f',
+            best_accuracy, corresponding_loss)
         logger.info('<-------------------->')
 
-      # new epoch, calculate average loss from last epoch
+      # new epoch, calculate average training loss and accuracy from last epoch
       if epoch_train != cur_epoch:
-        logger.info('average training loss in epoch %d: %f', cur_epoch,
+        logger.info('training loss in epoch %d: %f', cur_epoch,
             np.mean(losses_train[step_epoch:]))
-        logger.info('average training accuracy in epoch %d: %f', cur_epoch,
+        logger.info('training accuracy in epoch %d: %f', cur_epoch,
             np.mean(accuracies_train[step_epoch:]))
         step_epoch = step
         cur_epoch = epoch_train
 
+      # train
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_train,
                     model.keep_prob_placeholder: model.config.keep_prob,

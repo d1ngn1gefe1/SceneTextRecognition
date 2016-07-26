@@ -56,7 +56,8 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
     # Not enough time for target transition sequence
     assert cur_time-drop*2 > word_length
 
-    img_windows = np.zeros((cur_time, height, window_size, depth), dtype=np.uint8)
+    img_windows = np.zeros((cur_time, height, window_size, depth),
+        dtype=np.uint8)
     for j in range(cur_time):
       start1 = max((j+1)*stride-window_size, 0)
       end1 = min((j+1)*stride, w)
@@ -155,6 +156,7 @@ def main():
   with open('config.json', 'r') as json_file:
     json_data = json.load(json_file)
     dataset_dir = json_data['dataset_dir']
+    train_ratio = json_data['train_ratio']
     height = json_data['height']+ \
         int(json_data['height']*json_data['jittering_percent'])
     window_size = json_data['window_size']+ \
@@ -170,21 +172,34 @@ def main():
   test_dict = scipy.io.loadmat(dataset_dir + 'testCharBound.mat')
   test_data = np.squeeze(test_dict['testCharBound'])
 
-  imgs_train, words_embed_train, time_train, char_imgs_train, \
-      chars_embed_train = load_and_process(dataset_dir, train_data, height, \
+  len_train_old = len(train_data)
+  len_test_old = len(test_data)
+  len_total = len_train_old+len_test_old
+  len_train = int(train_ratio*len_total)
+
+  if len_train_old > len_train:
+    test_data = np.concatenate(train_data[len_train:], test_data)
+    train_data = train_data[:len_train]
+  else:
+    train_data = np.concatenate((train_data,
+        test_data[:(len_train-len_train_old)]))
+    test_data = test_data[(len_train-len_train_old):]
+
+  imgs_train, words_embed_train, time_train, char_imgs_train,
+      chars_embed_train = load_and_process(dataset_dir, train_data, height,
       window_size, depth, stride, visualize, visualize_dir)
-  imgs_test, words_embed_test, time_test, char_imgs_test, \
-      chars_embed_test = load_and_process(dataset_dir, test_data, height, \
+  imgs_test, words_embed_test, time_test, char_imgs_test,
+      chars_embed_test = load_and_process(dataset_dir, test_data, height,
       window_size, depth, stride, False, visualize_dir)
 
   max_time = int(max(max(time_train), max(time_test)))
 
   process_and_save(dataset_dir, 'train', height, window_size, depth,
-      imgs_train, words_embed_train, time_train, max_time, char_imgs_train, \
+      imgs_train, words_embed_train, time_train, max_time, char_imgs_train,
       chars_embed_train)
 
   process_and_save(dataset_dir, 'test', height, window_size, depth,
-      imgs_test, words_embed_test, time_test, max_time, char_imgs_test, \
+      imgs_test, words_embed_test, time_test, max_time, char_imgs_test,
       chars_embed_test)
 
 if __name__ == '__main__':
