@@ -185,10 +185,10 @@ def main():
         test_data[:(len_train-len_train_old)]))
     test_data = test_data[(len_train-len_train_old):]
 
-  imgs_train, words_embed_train, time_train, char_imgs_train,
+  imgs_train, words_embed_train, time_train, char_imgs_train, \
       chars_embed_train = load_and_process(dataset_dir, train_data, height,
       window_size, depth, stride, visualize, visualize_dir)
-  imgs_test, words_embed_test, time_test, char_imgs_test,
+  imgs_test, words_embed_test, time_test, char_imgs_test, \
       chars_embed_test = load_and_process(dataset_dir, test_data, height,
       window_size, depth, stride, False, visualize_dir)
 

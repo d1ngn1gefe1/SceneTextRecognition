@@ -19,17 +19,18 @@ class Config():
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
       self.embed_size = json_data['embed_size']
-      self.jittering = json_data['jittering']
+      self.jittering_size = int(json_data['jittering_percent']*self.height)
       self.stride = json_data['stride']
       self.lr = json_data['lr']
       self.keep_prob = json_data['keep_prob']
+      self.keep_prob_transformer = json_data['keep_prob_transformer']
       self.lstm_size = json_data['lstm_size']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
-      self.full_load_cnn_ckpt = json_data['full_load_cnn_ckpt']
-      self.full_load_ckpt = json_data['full_load_ckpt']
+      self.text_load_char_ckpt = json_data['text_load_char_ckpt']
+      self.load_text_ckpt = json_data['load_text_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.test_only = json_data['test_only']
       self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
@@ -37,7 +38,7 @@ class Config():
       self.test_size = self.test_size-self.test_size%self.batch_size
       self.gpu = json_data['gpu']
 
-class DTRN_Model():
+class TEXT_Model():
   def __init__(self, config):
     self.config = config
     self.load_data(self.config.debug, self.config.test_only)
@@ -103,12 +104,13 @@ class DTRN_Model():
 
     # float
     self.keep_prob_placeholder = tf.placeholder(tf.float32)
+    self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
     self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
         state_is_tuple=True)
 
-    with tf.variable_scope('CNN_LSTM') as scope:
+    with tf.variable_scope('TEXT') as scope:
       # inputs_placeholder: batch_size x max_time x height x window_size x depth
       # data_cnn: batch_size*max_time x height x window_size x depth
       data_cnn = tf.reshape(self.inputs_placeholder,
@@ -116,12 +118,15 @@ class DTRN_Model():
           self.config.window_size, self.config.depth])
 
       # img_features: batch_size*max_time x feature_size (128)
-      img_features, self.saver, self.variables_CNN = cnn.CNN(data_cnn,
-          self.config.depth, self.config.embed_size, self.keep_prob_placeholder)
+      img_features, self.variables_STN, self.variables_CNN, \
+          self.variables_FC, self.saver_STN, self.saver_CNN, self.saver_FC, \
+          x_trans = cnn.CNN(data_cnn, self.config.height,
+          self.config.window_size, self.config.depth, self.config.embed_size,
+          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
 
       # data_encoder: batch_size x max_time x feature_size
       data_encoder = tf.reshape(img_features, (self.config.batch_size,
-          self.max_time, -1))
+          self.max_time, self.config.embed_size))
 
       # rnn_outputs: max_time x batch_size x lstm_size
       rnn_outputs, _ = tf.nn.dynamic_rnn(self.cell,
@@ -171,44 +176,65 @@ class DTRN_Model():
 
   def add_training_op(self, loss):
     self.variables_LSTM_CTC = tf.trainable_variables()
+    for var in self.variables_STN:
+      self.variables_LSTM_CTC.remove(var)
     for var in self.variables_CNN:
       self.variables_LSTM_CTC.remove(var)
 
-    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.01).minimize(loss, var_list=self.variables_CNN)
-    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
-    train_op = tf.group(train_op1, train_op2)
+    train_op1 = tf.train.AdamOptimizer(self.config.lr*0.01).minimize(loss, var_list=self.variables_STN)
+    train_op2 = tf.train.AdamOptimizer(self.config.lr*0.01).minimize(loss, var_list=self.variables_CNN)
+    train_op3 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+    train_op = tf.group(train_op1, train_op2, train_op3)
 
     return train_op
 
 def main():
   config = Config()
-  model = DTRN_Model(config)
+  model = TEXT_Model(config)
   init = tf.initialize_all_variables()
 
   if not os.path.exists(model.config.ckpt_dir):
     os.makedirs(model.config.ckpt_dir)
 
-  with tf.Session() as session:
+  config = tf.ConfigProto(allow_soft_placement=True)
+
+  with tf.Session(config=config) as session:
     session.run(init)
-    best_loss = 10000
+    best_loss = float('inf')
+    corresponding_accuracy = 0 # accuracy corresponding to the best loss
+    best_accuracy = 0
+    corresponding_loss = float('inf') # loss corresponding to the best accuracy
+    model.saver = tf.train.Saver()
 
     # restore previous session
-    if model.config.full_load_cnn_ckpt:
-      model.saver.restore(session, model.config.ckpt_dir+'model_cnn_best.ckpt')
-      logger.info('cnn model restored')
-      model.saver = tf.train.Saver()
-    elif model.config.full_load_ckpt or model.config.test_only:
-      model.saver = tf.train.Saver()
-      model.saver.restore(session, model.config.ckpt_dir+'model_full_best.ckpt')
-      if os.path.isfile(model.config.ckpt_dir+'full_best_loss.npy'):
-        best_loss = np.load(model.config.ckpt_dir+'full_best_loss.npy')
+    if model.config.text_load_char_ckpt:
+      if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_stn.ckpt'):
+        model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+        model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
+        model.saver_FC.restore(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
+        logger.info('cnn model restored')
+    elif model.config.load_text_ckpt or model.config.test_only:
+      model.saver.restore(session, model.config.ckpt_dir+'model_best_loss_full.ckpt')
       logger.info('full model restored')
-      logger.info('best loss: '+str(best_loss))
+      if os.path.isfile(model.config.ckpt_dir+'text_best_loss.npy'):
+        best_loss = np.load(model.config.ckpt_dir+'text_best_loss.npy')
+        logger.info('best loss: '+str(best_loss))
+      if os.path.isfile(model.config.ckpt_dir+'text_corr_distances.npy'):
+        corresponding_distances = np.load(model.config.ckpt_dir+ 'text_corr_distances.npy')
+        logger.info('corresponding distances: ')
+        logger.info(corresponding_distances)
+      if os.path.isfile(model.config.ckpt_dir+'text_best_distances.npy'):
+        best_distances = np.load(model.config.ckpt_dir+'text_best_distances.npy')
+        logger.info('best distances: ')
+        logger.info(best_distances)
+      if os.path.isfile(model.config.ckpt_dir+'text_corr_loss.npy'):
+        corresponding_loss = np.load(model.config.ckpt_dir+'text_corr_loss.npy')
+        logger.info('corresponding loss: '+str(corresponding_loss))
 
     iterator_train = utils.data_iterator(
         model.imgs_train, model.words_embed_train, model.time_train,
         model.config.num_epochs, model.config.batch_size, model.max_time,
-        model.config.embed_size, model.config.jittering)
+        model.config.embed_size, model.config.jittering_size, False)
 
     num_examples = model.imgs_train.shape[0]
     num_steps = int(math.ceil(
@@ -227,7 +253,7 @@ def main():
         iterator_test = utils.data_iterator(
           model.imgs_test, model.words_embed_test, model.time_test,
           1, model.config.batch_size, model.max_time,
-          model.config.embed_size, 0)
+          model.config.embed_size, model.config.jittering_size, False)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             outputs_mask_test, epoch_test) in enumerate(iterator_test):
@@ -235,7 +261,8 @@ def main():
                        model.labels_placeholder: labels_sparse_test,
                        model.sequence_length_placeholder: sequence_length_test,
                        model.outputs_mask_placeholder: outputs_mask_test,
-                       model.keep_prob_placeholder: 1.0}
+                       model.keep_prob_placeholder: 1.0,
+                       model.keep_prob_transformer_placeholder: 1.0}
 
           ret_test = session.run([model.loss, model.dists],
               feed_dict=feed_test)
@@ -259,12 +286,12 @@ def main():
 
         if cur_loss < best_loss:
           best_loss = cur_loss
-          save_path = model.saver.save(session, model.config.ckpt_dir+'model_full_best.ckpt')
-          np.save(model.config.ckpt_dir+'full_best_loss.npy', np.array(best_loss))
-          logger.info('cnn model saved in file: %s', save_path)
+          save_path = model.saver.save(session, model.config.ckpt_dir+'model_best_loss_full.ckpt')
+          np.save(model.config.ckpt_dir+'text_best_loss.npy', np.array(best_loss))
+          logger.info('model saved in file: %s', save_path)
         else:
           save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
-          logger.info('cnn model saved in file: %s', save_path)
+          logger.info('model saved in file: %s', save_path)
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
@@ -278,7 +305,9 @@ def main():
                     model.labels_placeholder: labels_sparse_train,
                     model.sequence_length_placeholder: sequence_length_train,
                     model.outputs_mask_placeholder: outputs_mask_train,
-                    model.keep_prob_placeholder: model.config.keep_prob}
+                    model.keep_prob_placeholder: model.config.keep_prob,
+                    model.keep_prob_transformer_placeholder: \
+                        model.config.keep_prob_transformer}
 
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)

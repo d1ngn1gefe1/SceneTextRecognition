@@ -27,7 +27,7 @@ class Config():
       self.batch_size = json_data['batch_size']
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
-      self.cnn_load_ckpt = json_data['cnn_load_ckpt']
+      self.load_char_ckpt = json_data['load_char_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.test_only = json_data['test_only']
       self.test_and_save_every_n_steps = \
@@ -35,7 +35,7 @@ class Config():
       self.visualize = json_data['visualize']
       self.visualize_dir = json_data['visualize_dir']
 
-class CNN_Model():
+class CHAR_Model():
   def __init__(self, config):
     self.config = config
     self.load_data(self.config.debug, self.config.test_only)
@@ -80,8 +80,9 @@ class CNN_Model():
     self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
-    with tf.variable_scope('CNN') as scope:
-      logits, self.variables_spatial_transformer, self.variables_CNN, \
+    with tf.variable_scope('CHAR') as scope:
+      logits, self.variables_STN, self.variables_CNN, \
+          self.variables_FC, self.saver_STN, self.saver_CNN, self.saver_FC, \
           self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height,
           self.config.window_size, self.config.depth, self.config.embed_size,
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
@@ -98,17 +99,19 @@ class CNN_Model():
     return loss
 
   def add_training_op(self, loss):
-    train_op1 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
-        var_list=self.variables_spatial_transformer)
+    train_op1 = tf.train.AdamOptimizer(0.5*self.config.lr).minimize(loss,
+        var_list=self.variables_STN)
     train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
         var_list=self.variables_CNN)
-    train_op = tf.group(train_op1, train_op2)
+    train_op3 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+        var_list=self.variables_FC)
+    train_op = tf.group(train_op1, train_op2, train_op3)
 
     return train_op
 
 def main():
   config = Config()
-  model = CNN_Model(config)
+  model = CHAR_Model(config)
   init = tf.initialize_all_variables()
 
   if not os.path.exists(model.config.ckpt_dir):
@@ -123,26 +126,29 @@ def main():
     corresponding_accuracy = 0 # accuracy corresponding to the best loss
     best_accuracy = 0
     corresponding_loss = float('inf') # loss corresponding to the best accuracy
-    saver = tf.train.Saver()
 
     # restore previous session
-    if model.config.cnn_load_ckpt or model.config.test_only:
-      if os.path.isfile(model.config.ckpt_dir+'model_cnn_best_accuracy.ckpt'):
-        saver.restore(session, model.config.ckpt_dir+'model_cnn_best_accuracy.ckpt')
+    if model.config.load_char_ckpt or model.config.test_only:
+      if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_stn.ckpt'):
+        model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+        model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
+        model.saver_FC.restore(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
+        logger.info('<-------------------->')
         logger.info('model restored')
-      if os.path.isfile(model.config.ckpt_dir+'cnn_best_loss.npy'):
-        best_loss = np.load(model.config.ckpt_dir+'cnn_best_loss.npy')
+      if os.path.isfile(model.config.ckpt_dir+'char_best_loss.npy'):
+        best_loss = np.load(model.config.ckpt_dir+'char_best_loss.npy')
         logger.info('best loss: '+str(best_loss))
-      if os.path.isfile(model.config.ckpt_dir+'cnn_corr_accuracy.npy'):
+      if os.path.isfile(model.config.ckpt_dir+'char_corr_accuracy.npy'):
         corresponding_accuracy = np.load(model.config.ckpt_dir+ \
-            'cnn_corr_accuracy.npy')
+            'char_corr_accuracy.npy')
         logger.info('corresponding accuracy: '+str(corresponding_accuracy))
-      if os.path.isfile(model.config.ckpt_dir+'cnn_best_accuracy.npy'):
-        best_accuracy = np.load(model.config.ckpt_dir+'cnn_best_accuracy.npy')
+      if os.path.isfile(model.config.ckpt_dir+'char_best_accuracy.npy'):
+        best_accuracy = np.load(model.config.ckpt_dir+'char_best_accuracy.npy')
         logger.info('best accuracy: '+str(best_accuracy))
-      if os.path.isfile(model.config.ckpt_dir+'cnn_corr_loss.npy'):
-        corresponding_loss = np.load(model.config.ckpt_dir+'cnn_corr_loss.npy')
+      if os.path.isfile(model.config.ckpt_dir+'char_corr_loss.npy'):
+        corresponding_loss = np.load(model.config.ckpt_dir+'char_corr_loss.npy')
         logger.info('corresponding loss: '+str(corresponding_loss))
+      logger.info('<-------------------->')
 
     iterator_train = utils.data_iterator_char(model.char_imgs_train,
         model.chars_embed_train, model.config.num_epochs,
@@ -197,29 +203,28 @@ def main():
         # save three models: current model, model with the lowest loss, model
         # with the highest accuracy
         if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
-          save_path = saver.save(session, model.config.ckpt_dir+ \
-              'model_cnn.ckpt')
-          logger.info('cnn model saved in file: %s', save_path)
+          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_fc.ckpt')
+          logger.info('cnn model saved')
         if cur_loss < best_loss:
           best_loss = cur_loss
           corresponding_accuracy = cur_accuracy
-          save_path = saver.save(session, model.config.ckpt_dir+ \
-              'model_cnn_best_loss.ckpt')
-          np.save(model.config.ckpt_dir+'cnn_best_loss.npy',
-              np.array(best_loss))
-          np.save(model.config.ckpt_dir+'cnn_corr_accuracy.npy',
-              np.array(corresponding_accuracy))
-          logger.info('cnn model saved in file: %s', save_path)
+          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_best_loss_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_best_loss_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_best_loss_fc.ckpt')
+          logger.info('best loss model saved')
+          np.save(model.config.ckpt_dir+'char_best_loss.npy', np.array(best_loss))
+          np.save(model.config.ckpt_dir+'char_corr_accuracy.npy', np.array(corresponding_accuracy))
         if cur_accuracy > best_accuracy:
           best_accuracy = cur_accuracy
           corresponding_loss = cur_loss
-          save_path = saver.save(session, model.config.ckpt_dir+ \
-              'model_cnn_best_accuracy.ckpt')
-          np.save(model.config.ckpt_dir+'cnn_best_accuracy.npy',
-              np.array(best_accuracy))
-          np.save(model.config.ckpt_dir+'cnn_corr_loss.npy',
-              np.array(corresponding_loss))
-          logger.info('cnn model saved in file: %s', save_path)
+          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_best_accuracy_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_best_accuracy_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_best_accuracy_fc.ckpt')
+          logger.info('best accuracy model saved')
+          np.save(model.config.ckpt_dir+'char_best_accuracy.npy', np.array(best_accuracy))
+          np.save(model.config.ckpt_dir+'char_corr_loss.npy', np.array(corresponding_loss))
 
         logger.info('<-------------------->')
         logger.info('test loss: %f (#batches = %d)',

@@ -72,11 +72,11 @@ def indices2word(indices):
   return word
 
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
-    embed_size, jittering):
+    embed_size, jittering_size, is_test):
   num_examples = imgs.shape[0]
   max_time = imgs.shape[1]
-  height = imgs.shape[2]-10
-  window_size = imgs.shape[3]-10
+  height = imgs.shape[2]-jittering_size
+  window_size = imgs.shape[3]-jittering_size
   depth = imgs.shape[4]
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
 
@@ -96,13 +96,14 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
   for i in range(num_steps):
     startIdx = i*batch_size%num_examples
     endIdx = (i+1)*batch_size%num_examples
-
-    rand1 = randint(0, jittering)
-    rand2 = randint(0, jittering)
-
-    if jittering == 0:
-      rand1 = 5
-      rand2 = 5
+    
+    if is_test:
+      # crop window at the center
+      rand1 = int(jittering_size/2)
+      rand2 = int(jittering_size/2)
+    else:
+      rand1 = randint(0, jittering_size)
+      rand2 = randint(0, jittering_size)
 
     if startIdx < endIdx:
       inputs = imgs[startIdx:endIdx, :, rand1:rand1+height,
@@ -147,12 +148,12 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     labels = np.zeros((batch_size, embed_size), dtype=np.float32)
 
     if is_test:
+      # crop window at the center
       rand1 = int(jittering_size/2)
       rand2 = int(jittering_size/2)
     else:
       rand1 = randint(0, jittering_size)
       rand2 = randint(0, jittering_size)
-
 
     if startIdx < endIdx:
       inputs = char_imgs[startIdx:endIdx, rand1:rand1+height,

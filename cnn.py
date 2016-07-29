@@ -123,11 +123,32 @@ def CNN(x, height, width, depth, output_size, keep_prob, keep_prob_transformer):
         initializer=tf.constant_initializer(0))
     logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
-  variables_spatial_transformer = [W_loc_conv1, b_loc_conv1, gamma_loc_conv1,
+  variables_STN = [W_loc_conv1, b_loc_conv1, gamma_loc_conv1,
       beta_loc_conv1, W_loc_conv2, b_loc_conv2, gamma_loc_conv2, beta_loc_conv2,
       W_loc_fc1, b_loc_fc1, W_loc_fc2, b_loc_fc2]
   variables_CNN = [W_conv1, b_conv1, gamma_conv1, beta_conv1, W_conv2, b_conv2,
-      gamma_conv3, beta_conv3, W_conv3, b_conv3, gamma_conv3, beta_conv3, W_fc1,
-      b_fc1, W_fc2, b_fc2]
+      gamma_conv2, beta_conv2, W_conv3, b_conv3, gamma_conv3, beta_conv3, W_fc1,
+      b_fc1]
+  variables_FC = [W_fc2, b_fc2]
 
-  return logits, variables_spatial_transformer, variables_CNN, x_trans
+  saver_STN = tf.train.Saver({"W_loc_conv1": W_loc_conv1, "b_loc_conv1": b_loc_conv1,
+                              "gamma_loc_conv1": gamma_loc_conv1, "beta_loc_conv1": beta_loc_conv1,
+                              "W_loc_conv2": W_loc_conv2, "b_loc_conv2": b_loc_conv2,
+                              "gamma_loc_conv2": gamma_loc_conv2, "beta_loc_conv2": beta_loc_conv2,
+                              "W_loc_fc1": W_loc_fc1, "b_loc_fc1": b_loc_fc1,
+                              "W_loc_fc2": W_loc_fc2, "b_loc_fc2": b_loc_fc2
+                            })
+
+  saver_CNN = tf.train.Saver({"W_conv1": W_conv1, "b_conv1": b_conv1,
+                              "gamma_conv1": gamma_conv1, "beta_conv1": beta_conv1,
+                              "W_conv2": W_conv2, "b_conv2": b_conv2,
+                              "gamma_conv2": gamma_conv2, "beta_conv2": beta_conv2,
+                              "W_conv3": W_conv3, "b_conv3": b_conv3,
+                              "gamma_conv3": gamma_conv3, "beta_conv3": beta_conv3,
+                              "W_fc1": W_fc1, "b_fc1": b_fc1
+                            })
+
+  saver_FC = tf.train.Saver({"W_fc2": W_fc2, "b_fc2": b_fc2})
+
+  return logits, variables_STN, variables_CNN, variables_FC, saver_STN, \
+      saver_CNN, saver_FC, x_trans
