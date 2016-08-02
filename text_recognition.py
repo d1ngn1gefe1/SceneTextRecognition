@@ -211,8 +211,7 @@ def main():
       if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_stn.ckpt'):
         model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
         model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
-        model.saver_FC.restore(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
-        logger.info('cnn model restored')
+        logger.info('char model restored')
     elif model.config.load_text_ckpt or model.config.test_only:
       model.saver.restore(session, model.config.ckpt_dir+'model_best_loss_full.ckpt')
       logger.info('full model restored')
@@ -220,7 +219,7 @@ def main():
         best_loss = np.load(model.config.ckpt_dir+'text_best_loss.npy')
         logger.info('best loss: '+str(best_loss))
       if os.path.isfile(model.config.ckpt_dir+'text_corr_distances.npy'):
-        corresponding_distances = np.load(model.config.ckpt_dir+ 'text_corr_distances.npy')
+        corresponding_distances = np.load(model.config.ckpt_dir+'text_corr_distances.npy')
         logger.info('corresponding distances: ')
         logger.info(corresponding_distances)
       if os.path.isfile(model.config.ckpt_dir+'text_best_distances.npy'):

@@ -203,25 +203,25 @@ def main():
         # save three models: current model, model with the lowest loss, model
         # with the highest accuracy
         if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
-          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_stn.ckpt')
-          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_cnn.ckpt')
-          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_fc.ckpt')
+          model.saver_STN.save(session, model.config.ckpt_dir+'model_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+'model_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+'model_fc.ckpt')
           logger.info('cnn model saved')
         if cur_loss < best_loss:
           best_loss = cur_loss
           corresponding_accuracy = cur_accuracy
-          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_best_loss_stn.ckpt')
-          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_best_loss_cnn.ckpt')
-          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_best_loss_fc.ckpt')
+          model.saver_STN.save(session, model.config.ckpt_dir+'model_best_loss_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+'model_best_loss_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+'model_best_loss_fc.ckpt')
           logger.info('best loss model saved')
           np.save(model.config.ckpt_dir+'char_best_loss.npy', np.array(best_loss))
           np.save(model.config.ckpt_dir+'char_corr_accuracy.npy', np.array(corresponding_accuracy))
         if cur_accuracy > best_accuracy:
           best_accuracy = cur_accuracy
           corresponding_loss = cur_loss
-          model.saver_STN.save(session, model.config.ckpt_dir+ 'model_best_accuracy_stn.ckpt')
-          model.saver_CNN.save(session, model.config.ckpt_dir+ 'model_best_accuracy_cnn.ckpt')
-          model.saver_FC.save(session, model.config.ckpt_dir+ 'model_best_accuracy_fc.ckpt')
+          model.saver_STN.save(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+          model.saver_CNN.save(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
+          model.saver_FC.save(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
           logger.info('best accuracy model saved')
           np.save(model.config.ckpt_dir+'char_best_accuracy.npy', np.array(best_accuracy))
           np.save(model.config.ckpt_dir+'char_corr_loss.npy', np.array(corresponding_loss))
