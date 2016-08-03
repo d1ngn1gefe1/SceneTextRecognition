@@ -36,7 +36,8 @@ class Config():
       self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
       self.test_size = json_data['test_size']
       self.test_size = self.test_size-self.test_size%self.batch_size
-      self.gpu = json_data['gpu']
+      self.gpu = json_data['gpu'],
+      self.num_lstm_layer = json_data['num_lstm_layer']
 
 class TEXT_Model():
   def __init__(self, config):
@@ -107,8 +108,10 @@ class TEXT_Model():
     self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
-    self.cell = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size,
-        state_is_tuple=True)
+    lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size, state_is_tuple=True)
+    stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer, state_is_tuple=True)
+    lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size, state_is_tuple=True)
+    stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
 
     with tf.variable_scope('TEXT') as scope:
       # inputs_placeholder: batch_size x max_time x height x window_size x depth
@@ -124,27 +127,32 @@ class TEXT_Model():
           self.config.window_size, self.config.depth, self.config.embed_size,
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
 
-      # data_encoder: batch_size x max_time x feature_size
-      data_encoder = tf.reshape(img_features, (self.config.batch_size,
-          self.max_time, self.config.embed_size))
+      # data_encoder: a length max_time list of shape batch_size x feature_size
+      data_encoder = tf.reshape(img_features, [self.config.batch_size,
+          self.max_time, self.config.embed_size])
+      data_encoder = tf.transpose(data_encoder, [1, 0, 2])
+      data_encoder = tf.reshape(data_encoder, [-1, self.config.embed_size])
+      data_encoder = tf.split(0, self.max_time, data_encoder)
 
-      # rnn_outputs: max_time x batch_size x lstm_size
-      rnn_outputs, _ = tf.nn.dynamic_rnn(self.cell,
-          data_encoder, sequence_length=self.sequence_length_placeholder,
-          dtype=tf.float32, time_major=False)
+      # rnn_outputs: max_time x batch_size x 2*lstm_size
+      rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
+          stacked_lstm_cell_bw, data_encoder,
+          sequence_length=self.sequence_length_placeholder,
+          dtype=tf.float32)
+      rnn_outputs = tf.pack(rnn_outputs)
 
     return rnn_outputs
 
   def add_projection(self, rnn_outputs):
     with tf.variable_scope('Projection'):
-      W = tf.get_variable('Weight', [self.config.lstm_size,
+      W = tf.get_variable('Weight', [2*self.config.lstm_size,
           self.config.embed_size],
           initializer=tf.contrib.layers.xavier_initializer())
       b = tf.get_variable('Bias', [self.config.embed_size],
           initializer=tf.constant_initializer(0.0))
 
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
-          (self.config.batch_size*self.max_time, self.config.lstm_size))
+          (self.config.batch_size*self.max_time, 2*self.config.lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
       outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
@@ -294,7 +302,7 @@ def main():
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
-        logger.info('average training loss in epoch %d: %f', cur_epoch,
+        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step,
             np.mean(losses_train[step_epoch:]))
         #logger.info('average loss overall: %f', np.mean(losses_train))
         step_epoch = step

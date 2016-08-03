@@ -239,9 +239,9 @@ def main():
 
       # new epoch, calculate average training loss and accuracy from last epoch
       if epoch_train != cur_epoch:
-        logger.info('training loss in epoch %d: %f', cur_epoch,
+        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step,
             np.mean(losses_train[step_epoch:]))
-        logger.info('training accuracy in epoch %d: %f', cur_epoch,
+        logger.info('training accuracy in epoch %d, step %d: %f', cur_epoch, step,
             np.mean(accuracies_train[step_epoch:]))
         step_epoch = step
         cur_epoch = epoch_train

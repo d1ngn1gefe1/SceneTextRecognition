@@ -29,7 +29,7 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
   imgs = []
   words_embed = []
   time = np.zeros(num_examples, dtype=np.uint8)
-  drop = 3 # drop frame when too much padding
+  drop = 0 # drop frame when too much padding
 
   char_imgs = []
   chars_embed = []
