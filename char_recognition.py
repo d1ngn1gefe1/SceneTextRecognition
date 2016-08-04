@@ -81,11 +81,20 @@ class CHAR_Model():
 
   def add_model(self):
     with tf.variable_scope('CHAR') as scope:
-      logits, self.variables_STN, self.variables_CNN, \
-          self.variables_FC, self.saver_STN, self.saver_CNN, self.saver_FC, \
-          self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height,
-          self.config.window_size, self.config.depth, self.config.embed_size,
-          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
+      h_fc1_drop, self.variables_STN, self.variables_CNN, self.saver_STN, \
+          self.saver_CNN, self.x_trans = cnn.CNN(self.inputs_placeholder,
+          self.config.height, self.config.window_size, self.config.depth,
+          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder, false)
+
+      with tf.variable_scope('fc2') as scope:
+        W_fc2 = tf.get_variable('Weight', [256, self.config.embed_size],
+            initializer=tf.contrib.layers.xavier_initializer())
+        b_fc2 = tf.get_variable('Bias', [self.config.embed_size],
+            initializer=tf.constant_initializer(0))
+        logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+
+      self.variables_FC = [W_fc2, b_fc2]
+      self.saver_FC = tf.train.Saver({'W_fc2': W_fc2, 'b_fc2': b_fc2})
 
     return logits
 

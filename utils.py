@@ -96,7 +96,7 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
   for i in range(num_steps):
     startIdx = i*batch_size%num_examples
     endIdx = (i+1)*batch_size%num_examples
-    
+
     if is_test:
       # crop window at the center
       rand1 = int(jittering_size/2)

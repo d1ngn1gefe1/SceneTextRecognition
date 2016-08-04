@@ -3,7 +3,7 @@ import numpy as np
 from spatial_transformer import transformer
 
 
-def CNN(x, height, width, depth, output_size, keep_prob, keep_prob_transformer):
+def CNN(x, height, width, depth, keep_prob, keep_prob_transformer, use_logits):
   # x: batch_size x height x width x depth
 
   eps = 1e-5
@@ -113,15 +113,10 @@ def CNN(x, height, width, depth, output_size, keep_prob, keep_prob_transformer):
     b_fc1 = tf.get_variable('Bias', [256],
         initializer=tf.constant_initializer(0))
     h_pool3_flat = tf.reshape(h_pool3, [-1, height*width*64/64])
-    h_fc1 = tf.nn.relu(tf.matmul(h_pool3_flat, W_fc1) + b_fc1)
-    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
-
-  with tf.variable_scope('fc2') as scope:
-    W_fc2 = tf.get_variable('Weight', [256, output_size],
-        initializer=tf.contrib.layers.xavier_initializer())
-    b_fc2 = tf.get_variable('Bias', [output_size],
-        initializer=tf.constant_initializer(0))
-    logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+    logits = tf.matmul(h_pool3_flat, W_fc1) + b_fc1
+    if not use_logits:
+      h_fc1 = tf.nn.relu(logits)
+      h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
   variables_STN = [W_loc_conv1, b_loc_conv1, gamma_loc_conv1,
       beta_loc_conv1, W_loc_conv2, b_loc_conv2, gamma_loc_conv2, beta_loc_conv2,
@@ -129,26 +124,25 @@ def CNN(x, height, width, depth, output_size, keep_prob, keep_prob_transformer):
   variables_CNN = [W_conv1, b_conv1, gamma_conv1, beta_conv1, W_conv2, b_conv2,
       gamma_conv2, beta_conv2, W_conv3, b_conv3, gamma_conv3, beta_conv3, W_fc1,
       b_fc1]
-  variables_FC = [W_fc2, b_fc2]
 
-  saver_STN = tf.train.Saver({"W_loc_conv1": W_loc_conv1, "b_loc_conv1": b_loc_conv1,
-                              "gamma_loc_conv1": gamma_loc_conv1, "beta_loc_conv1": beta_loc_conv1,
-                              "W_loc_conv2": W_loc_conv2, "b_loc_conv2": b_loc_conv2,
-                              "gamma_loc_conv2": gamma_loc_conv2, "beta_loc_conv2": beta_loc_conv2,
-                              "W_loc_fc1": W_loc_fc1, "b_loc_fc1": b_loc_fc1,
-                              "W_loc_fc2": W_loc_fc2, "b_loc_fc2": b_loc_fc2
+  saver_STN = tf.train.Saver({'W_loc_conv1': W_loc_conv1, 'b_loc_conv1': b_loc_conv1,
+                              'gamma_loc_conv1': gamma_loc_conv1, 'beta_loc_conv1': beta_loc_conv1,
+                              'W_loc_conv2': W_loc_conv2, 'b_loc_conv2': b_loc_conv2,
+                              'gamma_loc_conv2': gamma_loc_conv2, 'beta_loc_conv2': beta_loc_conv2,
+                              'W_loc_fc1': W_loc_fc1, 'b_loc_fc1': b_loc_fc1,
+                              'W_loc_fc2': W_loc_fc2, 'b_loc_fc2': b_loc_fc2
                             })
 
-  saver_CNN = tf.train.Saver({"W_conv1": W_conv1, "b_conv1": b_conv1,
-                              "gamma_conv1": gamma_conv1, "beta_conv1": beta_conv1,
-                              "W_conv2": W_conv2, "b_conv2": b_conv2,
-                              "gamma_conv2": gamma_conv2, "beta_conv2": beta_conv2,
-                              "W_conv3": W_conv3, "b_conv3": b_conv3,
-                              "gamma_conv3": gamma_conv3, "beta_conv3": beta_conv3,
-                              "W_fc1": W_fc1, "b_fc1": b_fc1
+  saver_CNN = tf.train.Saver({'W_conv1': W_conv1, 'b_conv1': b_conv1,
+                              'gamma_conv1': gamma_conv1, 'beta_conv1': beta_conv1,
+                              'W_conv2': W_conv2, 'b_conv2': b_conv2,
+                              'gamma_conv2': gamma_conv2, 'beta_conv2': beta_conv2,
+                              'W_conv3': W_conv3, 'b_conv3': b_conv3,
+                              'gamma_conv3': gamma_conv3, 'beta_conv3': beta_conv3,
+                              'W_fc1': W_fc1, 'b_fc1': b_fc1
                             })
 
-  saver_FC = tf.train.Saver({"W_fc2": W_fc2, "b_fc2": b_fc2})
-
-  return logits, variables_STN, variables_CNN, variables_FC, saver_STN, \
-      saver_CNN, saver_FC, x_trans
+  if use_logits:
+    return logits, variables_STN, variables_CNN, saver_STN, saver_CNN, x_trans
+  else:
+    return h_fc1_drop, variables_STN, variables_CNN, saver_STN, saver_CNN, x_trans
