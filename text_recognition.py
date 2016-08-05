@@ -36,7 +36,7 @@ class Config():
       self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
       self.test_size = json_data['test_size']
       self.test_size = self.test_size-self.test_size%self.batch_size
-      self.gpu = json_data['gpu'],
+      self.gpu = json_data['gpu']
       self.num_lstm_layer = json_data['num_lstm_layer']
 
 class TEXT_Model():
@@ -124,8 +124,7 @@ class TEXT_Model():
       logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
           x_trans = cnn.CNN(data_cnn, self.config.height, \
           self.config.window_size, self.config.depth, \
-          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder,
-          True)
+          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
       self.variables_CHAR = variables_STN+variables_CNN
 
       # data_encoder: a length max_time list of shape batch_size x 256
@@ -135,12 +134,12 @@ class TEXT_Model():
       data_encoder = tf.reshape(data_encoder, [-1, 256])
       data_encoder = tf.split(0, self.max_time, data_encoder)
 
-      # rnn_outputs: max_time x batch_size x 2*lstm_size
+      # rnn_outputs: batch_size x max_time x 2*lstm_size
       rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
           stacked_lstm_cell_bw, data_encoder,
-          sequence_length=self.sequence_length_placeholder,
-          dtype=tf.float32)
+          sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
       rnn_outputs = tf.pack(rnn_outputs)
+      rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
 
     return rnn_outputs
 
@@ -185,14 +184,13 @@ class TEXT_Model():
 
   def add_training_op(self, loss):
     self.variables_LSTM_CTC = tf.trainable_variables()
+
     for var in self.variables_CHAR:
       self.variables_LSTM_CTC.remove(var)
 
-    # train_op1 = tf.train.AdamOptimizer(self.config.lr*0.01).minimize(loss, var_list=self.variables_CHAR)
-    # train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
-    # train_op = tf.group(train_op1, train_op2)
-
-    train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+    train_op1 = tf.train.AdamOptimizer(0.01*self.config.lr).minimize(loss, var_list=self.variables_CHAR)
+    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+    train_op = tf.group(train_op1, train_op2)
 
     return train_op
 

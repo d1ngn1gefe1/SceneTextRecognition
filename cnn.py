@@ -3,7 +3,7 @@ import numpy as np
 from spatial_transformer import transformer
 
 
-def CNN(x, height, width, depth, keep_prob, keep_prob_transformer, use_logits):
+def CNN(x, height, width, depth, keep_prob, keep_prob_transformer):
   # x: batch_size x height x width x depth
 
   eps = 1e-5
@@ -114,9 +114,6 @@ def CNN(x, height, width, depth, keep_prob, keep_prob_transformer, use_logits):
         initializer=tf.constant_initializer(0))
     h_pool3_flat = tf.reshape(h_pool3, [-1, height*width*64/64])
     logits = tf.matmul(h_pool3_flat, W_fc1) + b_fc1
-    if not use_logits:
-      h_fc1 = tf.nn.relu(logits)
-      h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
   variables_STN = [W_loc_conv1, b_loc_conv1, gamma_loc_conv1,
       beta_loc_conv1, W_loc_conv2, b_loc_conv2, gamma_loc_conv2, beta_loc_conv2,
@@ -142,7 +139,4 @@ def CNN(x, height, width, depth, keep_prob, keep_prob_transformer, use_logits):
                               'W_fc1': W_fc1, 'b_fc1': b_fc1
                             })
 
-  if use_logits:
-    return logits, variables_STN, variables_CNN, saver_STN, saver_CNN, x_trans
-  else:
-    return h_fc1_drop, variables_STN, variables_CNN, saver_STN, saver_CNN, x_trans
+  return logits, variables_STN, variables_CNN, saver_STN, saver_CNN, x_trans

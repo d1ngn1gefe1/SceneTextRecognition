@@ -81,10 +81,14 @@ class CHAR_Model():
 
   def add_model(self):
     with tf.variable_scope('CHAR') as scope:
-      h_fc1_drop, self.variables_STN, self.variables_CNN, self.saver_STN, \
+      logits, self.variables_STN, self.variables_CNN, self.saver_STN, \
           self.saver_CNN, self.x_trans = cnn.CNN(self.inputs_placeholder,
           self.config.height, self.config.window_size, self.config.depth,
-          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder, false)
+          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
+
+      with tf.variable_scope('fc1') as scope:
+        h_fc1 = tf.nn.relu(logits)
+        h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
       with tf.variable_scope('fc2') as scope:
         W_fc2 = tf.get_variable('Weight', [256, self.config.embed_size],
