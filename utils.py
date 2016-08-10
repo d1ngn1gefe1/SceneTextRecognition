@@ -145,7 +145,7 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     endIdx = (i+1)*batch_size%num_chars
 
     inputs = np.zeros((batch_size, height, window_size, depth), dtype=np.uint8)
-    labels = np.zeros((batch_size, embed_size), dtype=np.float32)
+    labels = np.zeros(batch_size, dtype=np.float32)
 
     if is_test:
       # crop window at the center
@@ -158,17 +158,16 @@ def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     if startIdx < endIdx:
       inputs = char_imgs[startIdx:endIdx, rand1:rand1+height,
           rand2:rand2+window_size, :]
-      labels[np.arange(0, batch_size), chars_embed[startIdx:endIdx]] = 1
+      labels = chars_embed[startIdx:endIdx]
     elif endIdx == 0:
       inputs = char_imgs[startIdx:, rand1:rand1+height,
           rand2:rand2+window_size, :]
-      labels[np.arange(0, batch_size), chars_embed[startIdx:]] = 1
+      labels = chars_embed[startIdx:endIdx]
     else:
       inputs = np.concatenate((char_imgs[startIdx:, rand1:rand1+height,
           rand2:rand2+window_size, :], char_imgs[:endIdx, rand1:rand1+height,
           rand2:rand2+window_size, :]))
-      labels[np.arange(0, batch_size), np.concatenate((chars_embed[startIdx:],
-          chars_embed[:endIdx]))] = 1
+      labels = np.concatenate((chars_embed[startIdx:], chars_embed[:endIdx]))
 
     epoch = i*batch_size/num_chars
 

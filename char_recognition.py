@@ -72,8 +72,8 @@ class CHAR_Model():
         self.config.window_size, self.config.depth])
 
     # batch_size x embed_size
-    self.labels_placeholder = tf.placeholder(tf.float32,
-        shape=[self.config.batch_size, self.config.embed_size])
+    self.labels_placeholder = tf.placeholder(tf.int64,
+        shape=[self.config.batch_size])
 
     # float
     self.keep_prob_placeholder = tf.placeholder(tf.float32)
@@ -88,7 +88,7 @@ class CHAR_Model():
 
       with tf.variable_scope('fc1') as scope:
         h_fc1 = tf.nn.relu(logits)
-        h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+        h_fc1_drop = tf.nn.dropout(h_fc1, self.keep_prob_placeholder)
 
       with tf.variable_scope('fc2') as scope:
         W_fc2 = tf.get_variable('Weight', [256, self.config.embed_size],
@@ -103,11 +103,13 @@ class CHAR_Model():
     return logits
 
   def add_loss_op(self, logits):
-    losses = tf.nn.softmax_cross_entropy_with_logits(logits,
+    print logits
+    print self.labels_placeholder
+    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits,
         self.labels_placeholder)
     loss = tf.reduce_mean(losses)
 
-    self.diff = tf.argmax(logits, 1)-tf.argmax(self.labels_placeholder, 1)
+    self.diff = tf.argmax(logits, 1)-self.labels_placeholder
 
     return loss
 
