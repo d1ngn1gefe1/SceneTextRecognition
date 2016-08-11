@@ -38,6 +38,7 @@ class Config():
       self.test_size = self.test_size-self.test_size%self.batch_size
       self.gpu = json_data['gpu']
       self.num_lstm_layer = json_data['num_lstm_layer']
+      self.print_pred = json_data['print_pred']
 
 class TEXT_Model():
   def __init__(self, config):
@@ -269,10 +270,15 @@ def main():
                        model.keep_prob_placeholder: 1.0,
                        model.keep_prob_transformer_placeholder: 1.0}
 
-          ret_test = session.run([model.loss, model.dists],
+          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth],
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
           dists_test = np.concatenate((dists_test, ret_test[1]))
+          if model.config.print_pred:
+            pred = utils.indices2d2words(ret_test[2])
+            groundtruth = utils.indices2d2words(ret_test[3])
+            for i in range(len(pred)):
+              print pred[i], groundtruth[i]
 
         cur_loss = np.mean(losses_test)
         cur_dist = np.mean(dists_test)

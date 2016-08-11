@@ -71,6 +71,12 @@ def indices2word(indices):
     word += index2char(index)
   return word
 
+def indices2d2words(indices2d):
+  words = []
+  for indices in indices2d:
+    words.append(indices2word(indices))
+  return words
+
 def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
     embed_size, jittering_size, is_test):
   num_examples = imgs.shape[0]
