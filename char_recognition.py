@@ -14,7 +14,7 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
-      self.dataset_dir = json_data['dataset_dir']
+      self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
@@ -45,14 +45,14 @@ class CHAR_Model():
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
-    filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
+    filename_test = os.path.join(self.config.dataset_dir_iiit5k, 'test.hdf5')
     f_test = h5py.File(filename_test, 'r')
     self.char_imgs_test = np.array(f_test.get('char_imgs'), dtype=np.uint8)
     self.chars_embed_test = np.array(f_test.get('chars_embed'), dtype=np.uint8)
     logger.info('loading test data (%d examples)', self.char_imgs_test.shape[0])
     f_test.close()
 
-    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
+    filename_train = os.path.join(self.config.dataset_dir_iiit5k, 'train.hdf5')
     f_train = h5py.File(filename_train, 'r')
     self.char_imgs_train = np.array(f_train.get('char_imgs'), dtype=np.uint8)
     self.chars_embed_train = np.array(f_train.get('chars_embed'),

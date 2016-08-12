@@ -8,11 +8,11 @@ import json
 import utils
 import math
 
-def load_and_process(dataset_dir, data, height, window_size, depth, stride,
+def load_and_process(dataset_dir_iiit5k, data, height, window_size, depth, stride,
     visualize, visualize_dir):
   """
   Args:
-      dataset_dir:
+      dataset_dir_iiit5k:
       data:
       height:
       window_size:
@@ -38,7 +38,7 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
     os.makedirs(visualize_dir)
 
   for i in range(num_examples):
-    img = cv2.imread(dataset_dir + data[i][0][0])
+    img = cv2.imread(dataset_dir_iiit5k+data[i][0][0])
     h = height
     scale = height/float(img.shape[0])
     w = int(round(scale*img.shape[1]))
@@ -105,11 +105,11 @@ def load_and_process(dataset_dir, data, height, window_size, depth, stride,
 
   return (imgs, words_embed, time, char_imgs, chars_embed)
 
-def process_and_save(dataset_dir, name, height, window_size, depth,
+def process_and_save(dataset_dir_iiit5k, name, height, window_size, depth,
     imgs, words_embed, time, max_time, char_imgs, chars_embed):
   """
   Args:
-      dataset_dir:
+      dataset_dir_iiit5k:
       name:
       height:
       window_size:
@@ -137,7 +137,7 @@ def process_and_save(dataset_dir, name, height, window_size, depth,
     char_imgs_np[j, :, :, :] = char_imgs[j]
     chars_embed_np[j] = chars_embed[j]
 
-  filename = os.path.join(dataset_dir, name+'.hdf5')
+  filename = os.path.join(dataset_dir_iiit5k, name+'.hdf5')
   print 'Writing ' + filename
   with h5py.File(filename, 'w') as hf:
     dt = h5py.special_dtype(vlen=np.dtype('uint8'))
@@ -155,7 +155,7 @@ def main():
   """
   with open('config.json', 'r') as json_file:
     json_data = json.load(json_file)
-    dataset_dir = json_data['dataset_dir']
+    dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
     train_ratio = json_data['train_ratio']
     height = json_data['height']+ \
         int(json_data['height']*json_data['jittering_percent'])
@@ -167,9 +167,9 @@ def main():
     visualize = json_data['visualize']
     visualize_dir = json_data['visualize_dir']
 
-  train_dict = scipy.io.loadmat(dataset_dir + 'trainCharBound.mat')
+  train_dict = scipy.io.loadmat(dataset_dir_iiit5k + 'trainCharBound.mat')
   train_data = np.squeeze(train_dict['trainCharBound'])
-  test_dict = scipy.io.loadmat(dataset_dir + 'testCharBound.mat')
+  test_dict = scipy.io.loadmat(dataset_dir_iiit5k + 'testCharBound.mat')
   test_data = np.squeeze(test_dict['testCharBound'])
 
   len_train_old = len(train_data)
@@ -186,19 +186,19 @@ def main():
     test_data = test_data[(len_train-len_train_old):]
 
   imgs_train, words_embed_train, time_train, char_imgs_train, \
-      chars_embed_train = load_and_process(dataset_dir, train_data, height,
+      chars_embed_train = load_and_process(dataset_dir_iiit5k, train_data, height,
       window_size, depth, stride, visualize, visualize_dir)
   imgs_test, words_embed_test, time_test, char_imgs_test, \
-      chars_embed_test = load_and_process(dataset_dir, test_data, height,
+      chars_embed_test = load_and_process(dataset_dir_iiit5k, test_data, height,
       window_size, depth, stride, False, visualize_dir)
 
   max_time = int(max(max(time_train), max(time_test)))
 
-  process_and_save(dataset_dir, 'train', height, window_size, depth,
+  process_and_save(dataset_dir_iiit5k, 'train', height, window_size, depth,
       imgs_train, words_embed_train, time_train, max_time, char_imgs_train,
       chars_embed_train)
 
-  process_and_save(dataset_dir, 'test', height, window_size, depth,
+  process_and_save(dataset_dir_iiit5k, 'test', height, window_size, depth,
       imgs_test, words_embed_test, time_test, max_time, char_imgs_test,
       chars_embed_test)
 

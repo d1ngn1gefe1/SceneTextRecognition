@@ -14,7 +14,7 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
-      self.dataset_dir = json_data['dataset_dir']
+      self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
@@ -39,6 +39,8 @@ class Config():
       self.gpu = json_data['gpu']
       self.num_lstm_layer = json_data['num_lstm_layer']
       self.print_pred = json_data['print_pred']
+      self.visualize = json_data['visualize']
+      self.visualize_dir = json_data['visualize_dir']
 
 class TEXT_Model():
   def __init__(self, config):
@@ -52,7 +54,7 @@ class TEXT_Model():
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
-    filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
+    filename_test = os.path.join(self.config.dataset_dir_iiit5k, 'test.hdf5')
     f_test = h5py.File(filename_test, 'r')
     self.imgs_test = np.array(f_test.get('imgs'), dtype=np.uint8)
     self.words_embed_test = f_test.get('words_embed')[()].tolist()
@@ -70,7 +72,7 @@ class TEXT_Model():
       self.imgs_test = self.imgs_test[:, :self.max_time]
       return
 
-    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
+    filename_train = os.path.join(self.config.dataset_dir_iiit5k, 'train.hdf5')
     f_train = h5py.File(filename_train, 'r')
     self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
     self.words_embed_train = f_train.get('words_embed')[()].tolist()
@@ -123,7 +125,7 @@ class TEXT_Model():
 
       # logits: batch_size*max_time x 256
       logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
-          x_trans = cnn.CNN(data_cnn, self.config.height, \
+          self.x_trans = cnn.CNN(data_cnn, self.config.height, \
           self.config.window_size, self.config.depth, \
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
       self.variables_CHAR = variables_STN+variables_CNN
@@ -270,15 +272,24 @@ def main():
                        model.keep_prob_placeholder: 1.0,
                        model.keep_prob_transformer_placeholder: 1.0}
 
-          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth],
+          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth, model.x_trans],
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
           dists_test = np.concatenate((dists_test, ret_test[1]))
+
           if model.config.print_pred:
             pred = utils.indices2d2words(ret_test[2])
             groundtruth = utils.indices2d2words(ret_test[3])
             for i in range(len(pred)):
               print pred[i], groundtruth[i]
+
+          # visualize the STN results
+          if model.config.visualize and step_test < 1:
+            utils.save_imgs(inputs_test.reshape(-1, model.config.height,
+                model.config.window_size, model.config.depth),
+                model.config.visualize_dir, 'original'+str(step_test)+'-')
+            utils.save_imgs(ret_test[4], model.config.visualize_dir,
+                'trans'+str(step_test)+'-')
 
         cur_loss = np.mean(losses_test)
         cur_dist = np.mean(dists_test)
