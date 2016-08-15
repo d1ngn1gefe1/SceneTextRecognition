@@ -14,7 +14,7 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
-      self.dataset_dir = json_data['dataset_dir_vgg']
+      self.dataset_dir = json_data['dataset_dir_iiit5k']
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
@@ -90,23 +90,13 @@ class TEXT_Model():
     self.imgs_test = self.imgs_test[:, :self.max_time]
 
   def add_placeholders(self):
-    # batch_size x max_time x height x width x depth
     self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[self.config.batch_size, self.max_time, self.config.height,
-        self.config.window_size, self.config.depth])
-
-    # batch_size x max_time x embed_size (63)
+        shape=[None, self.config.height, self.config.window_size,
+        self.config.depth])
     self.labels_placeholder = tf.sparse_placeholder(tf.int32)
-
-    # batch_size
     self.sequence_length_placeholder = tf.placeholder(tf.int32,
         shape=[self.config.batch_size])
-
-    # max_time x batch_size x embed_size
-    self.outputs_mask_placeholder = tf.placeholder(tf.float32,
-        shape=[self.max_time, self.config.batch_size, self.config.embed_size])
-
-    # float
+    self.partition_placeholder = tf.placeholder(tf.int32)
     self.keep_prob_placeholder = tf.placeholder(tf.float32)
     self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
 
@@ -117,29 +107,26 @@ class TEXT_Model():
     stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
 
     with tf.variable_scope('TEXT') as scope:
-      # inputs_placeholder: batch_size x max_time x height x window_size x depth
-      # data_cnn: batch_size*max_time x height x window_size x depth
-      data_cnn = tf.reshape(self.inputs_placeholder,
-          [self.config.batch_size*self.max_time, self.config.height,
-          self.config.window_size, self.config.depth])
-
-      # logits: batch_size*max_time x 256
+      # inputs_placeholder: sum(time) x height x window_size x depth
+      # logits: sum(time) x cnn_feature_size
       logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
-          self.x_trans = cnn.CNN(data_cnn, self.config.height, \
+          self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height, \
           self.config.window_size, self.config.depth, \
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
       self.variables_CHAR = variables_STN+variables_CNN
 
-      # data_encoder: a length max_time list of shape batch_size x 256
-      data_encoder = tf.reshape(logits, [self.config.batch_size,
-          self.max_time, 256])
-      data_encoder = tf.transpose(data_encoder, [1, 0, 2])
-      data_encoder = tf.reshape(data_encoder, [-1, 256])
-      data_encoder = tf.split(0, self.max_time, data_encoder)
+      # data_rnn: a length max_time list of shape batch_size x 256
+      data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
+      for i in range(len(data_rnn)):
+        data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.max_time-self.sequence_length_placeholder[i], 256])])
+      data_rnn = tf.pack(data_rnn, 0)
+      data_rnn = tf.transpose(data_rnn, [1, 0, 2])
+      data_rnn = tf.reshape(data_rnn, [-1, 256])
+      data_rnn = tf.split(0, self.max_time, data_rnn)
 
       # rnn_outputs: batch_size x max_time x 2*lstm_size
       rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
-          stacked_lstm_cell_bw, data_encoder,
+          stacked_lstm_cell_bw, data_rnn,
           sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
       rnn_outputs = tf.pack(rnn_outputs)
       rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
@@ -160,20 +147,19 @@ class TEXT_Model():
       outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
-      outputs = tf.add(outputs, self.outputs_mask_placeholder)
 
       # outputs: max_time x batch_size x embed_size
     return outputs
 
   def add_loss_op(self, outputs):
-    loss = tf.contrib.ctc.ctc_loss(outputs, self.labels_placeholder,
+    loss = tf.nn.ctc_loss(outputs, self.labels_placeholder,
         self.sequence_length_placeholder)
     loss = tf.reduce_mean(loss)
 
     return loss
 
   def add_decoder(self, outputs):
-    decoded, _ = tf.contrib.ctc.ctc_beam_search_decoder(outputs,
+    decoded, _ = tf.nn.ctc_beam_search_decoder(outputs,
         self.sequence_length_placeholder, merge_repeated=False)
     decoded = tf.to_int32(decoded[0])
 
@@ -252,7 +238,7 @@ def main():
     cur_epoch = 0
     step_epoch = 0
     for step, (inputs_train, labels_sparse_train, sequence_length_train,
-        outputs_mask_train, epoch_train) in enumerate(iterator_train):
+        partition_train, epoch_train) in enumerate(iterator_train):
 
       # test
       if step%model.config.test_and_save_every_n_steps == 0:
@@ -264,13 +250,13 @@ def main():
           model.config.embed_size, model.config.jittering_size, False)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
-            outputs_mask_test, epoch_test) in enumerate(iterator_test):
+            partition_test, epoch_test) in enumerate(iterator_test):
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_sparse_test,
                        model.sequence_length_placeholder: sequence_length_test,
-                       model.outputs_mask_placeholder: outputs_mask_test,
                        model.keep_prob_placeholder: 1.0,
-                       model.keep_prob_transformer_placeholder: 1.0}
+                       model.keep_prob_transformer_placeholder: 1.0,
+                       model.partition_placeholder: partition_test}
 
           ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth, model.x_trans],
               feed_dict=feed_test)
@@ -326,16 +312,16 @@ def main():
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_sparse_train,
                     model.sequence_length_placeholder: sequence_length_train,
-                    model.outputs_mask_placeholder: outputs_mask_train,
                     model.keep_prob_placeholder: model.config.keep_prob,
                     model.keep_prob_transformer_placeholder: \
-                        model.config.keep_prob_transformer}
+                        model.config.keep_prob_transformer,
+                    model.partition_placeholder: partition_train}
 
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
-      # logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
-      # ret_train[1])
+      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+        ret_train[1])
 
 if __name__ == '__main__':
   main()

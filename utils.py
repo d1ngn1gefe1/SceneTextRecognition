@@ -128,15 +128,18 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
       sequence_length = np.concatenate((time[startIdx:], time[:endIdx]))
       labels = words_embed[startIdx:]+words_embed[:endIdx]
 
+    inputs = np.swapaxes(inputs, 0, 1)
+    inputs = [inputs[:sequence_length[j], j] for j in range(batch_size)]
+    inputs = np.concatenate(inputs, 0)
+
     labels_sparse = dense2sparse(labels)
 
     epoch = i*batch_size/num_examples
 
-    outputs_mask.fill(0)
-    for j, length in enumerate(sequence_length):
-      outputs_mask[length:, j, :] = np.nan
+    partition = np.arange(0, batch_size)
+    partition = np.repeat(partition, sequence_length)
 
-    yield (inputs, labels_sparse, sequence_length, outputs_mask, epoch)
+    yield (inputs, labels_sparse, sequence_length, partition, epoch)
 
 def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     embed_size, jittering_size, is_test):
