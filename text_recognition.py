@@ -14,7 +14,7 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
-      self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
+      self.dataset_dir = json_data['dataset_dir_vgg']
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
@@ -54,7 +54,7 @@ class TEXT_Model():
     self.train_op = self.add_training_op(self.loss)
 
   def load_data(self, debug=False, test_only=False):
-    filename_test = os.path.join(self.config.dataset_dir_iiit5k, 'test.hdf5')
+    filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
     f_test = h5py.File(filename_test, 'r')
     self.imgs_test = np.array(f_test.get('imgs'), dtype=np.uint8)
     self.words_embed_test = f_test.get('words_embed')[()].tolist()
@@ -72,7 +72,7 @@ class TEXT_Model():
       self.imgs_test = self.imgs_test[:, :self.max_time]
       return
 
-    filename_train = os.path.join(self.config.dataset_dir_iiit5k, 'train.hdf5')
+    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
     f_train = h5py.File(filename_train, 'r')
     self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
     self.words_embed_train = f_train.get('words_embed')[()].tolist()
@@ -120,7 +120,7 @@ class TEXT_Model():
       # inputs_placeholder: batch_size x max_time x height x window_size x depth
       # data_cnn: batch_size*max_time x height x window_size x depth
       data_cnn = tf.reshape(self.inputs_placeholder,
-          [self.max_time*self.config.batch_size, self.config.height,
+          [self.config.batch_size*self.max_time, self.config.height,
           self.config.window_size, self.config.depth])
 
       # logits: batch_size*max_time x 256
@@ -195,7 +195,7 @@ class TEXT_Model():
     train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
     train_op = tf.group(train_op1, train_op2)
 
-    return train_op
+    return train_op2
 
 def main():
   config = Config()
