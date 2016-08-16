@@ -193,8 +193,8 @@ def main():
     iterator_train = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
         model.config.height, model.config.window_size, model.config.depth, \
         model.config.embed_size, model.config.stride, model.max_time, \
-        model.config.num_epochs, model.config.batch_size,
-        True, model.config.debug, model.config.debug_size)
+        model.config.num_epochs, model.config.batch_size, True, \
+        model.config.debug, model.config.debug_size, model.config.jittering_size)
 
     losses_train = []
     cur_epoch = 0
@@ -210,9 +210,9 @@ def main():
 
         iterator_test = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
             model.config.height, model.config.window_size, model.config.depth, \
-            model.config.embed_size, model.config.stride, model.max_time, \
-            model.config.num_epochs, model.config.batch_size,
-            False, True, model.config.test_size)
+            model.config.embed_size, model.config.stride, model.max_time, 1, \
+            model.config.batch_size, False, True, model.config.test_size, \
+            model.config.jittering_size)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             partition_test, epoch_test) in enumerate(iterator_test):

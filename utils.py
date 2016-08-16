@@ -77,73 +77,11 @@ def indices2d2words(indices2d):
     words.append(indices2word(indices))
   return words
 
-def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
-    embed_size, jittering_size, is_test):
-  num_examples = imgs.shape[0]
-  max_time = imgs.shape[1]
-  height = imgs.shape[2]-jittering_size
-  window_size = imgs.shape[3]-jittering_size
-  depth = imgs.shape[4]
-  num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
-
-  max_words_length = 0
-  for word_embed in words_embed:
-    word_length = word_embed.shape[0]
-    if max_words_length < word_length:
-      max_words_length = word_length
-
-  #logger.info('max time: %d', max_time)
-  #logger.info('max words length: %d', max_words_length)
-
-  inputs = np.zeros((batch_size, max_time, height, window_size, depth))
-  sequence_length = np.zeros(batch_size, dtype='int32') # number of windows
-  outputs_mask = np.zeros((max_time, batch_size, embed_size))
-
-  for i in range(num_steps):
-    startIdx = i*batch_size%num_examples
-    endIdx = (i+1)*batch_size%num_examples
-
-    if is_test:
-      # crop window at the center
-      rand1 = int(jittering_size/2)
-      rand2 = int(jittering_size/2)
-    else:
-      rand1 = randint(0, jittering_size)
-      rand2 = randint(0, jittering_size)
-
-    if startIdx < endIdx:
-      inputs = imgs[startIdx:endIdx, :, rand1:rand1+height,
-          rand2:rand2+window_size, :]
-      sequence_length = time[startIdx:endIdx] # number of windows
-      labels = words_embed[startIdx:endIdx]
-    elif endIdx == 0:
-      inputs = imgs[startIdx:, :, rand1:rand1+height,
-          rand2:rand2+window_size, :]
-      sequence_length = time[startIdx:]
-      labels = words_embed[startIdx:]
-    else:
-      inputs = np.concatenate((imgs[startIdx:, :, rand1:rand1+height,
-          rand2:rand2+window_size, :], imgs[:endIdx, :, rand1:rand1+height,
-          rand2:rand2+window_size, :]))
-      sequence_length = np.concatenate((time[startIdx:], time[:endIdx]))
-      labels = words_embed[startIdx:]+words_embed[:endIdx]
-
-    inputs = np.swapaxes(inputs, 0, 1)
-    inputs = [inputs[:sequence_length[j], j] for j in range(batch_size)]
-    inputs = np.concatenate(inputs, 0)
-
-    labels_sparse = dense2sparse(labels)
-
-    epoch = i*batch_size/num_examples
-
-    partition = np.arange(0, batch_size)
-    partition = np.repeat(partition, sequence_length)
-
-    yield (inputs, labels_sparse, sequence_length, partition, epoch)
-
-def data_iterator_vgg(dataset_dir_vgg, height, window_size, depth, embed_size, stride, max_time, num_epochs, batch_size, isTrain, debug, debug_size):
+def data_iterator_vgg(dataset_dir_vgg, height, window_size, depth, embed_size, \
+    stride, max_time, num_epochs, batch_size, is_train, debug, debug_size, \
+    jittering_size):
   count = 0
-  dataset = 'annotation_train.txt' if isTrain else 'annotation_val.txt'
+  dataset = 'annotation_train.txt' if is_train else 'annotation_val.txt'
 
   with open(dataset_dir_vgg+dataset) as f:
     lines = f.readlines()
