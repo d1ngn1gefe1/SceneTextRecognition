@@ -141,6 +141,79 @@ def data_iterator(imgs, words_embed, time, num_epochs, batch_size, max_time,
 
     yield (inputs, labels_sparse, sequence_length, partition, epoch)
 
+def data_iterator_vgg(dataset_dir_vgg, height, window_size, depth, embed_size, stride, max_time, num_epochs, batch_size, isTrain, debug, debug_size):
+  count = 0
+  dataset = 'annotation_train.txt' if isTrain else 'annotation_val.txt'
+
+  with open(dataset_dir_vgg+dataset) as f:
+    lines = f.readlines()
+    num_examples = len(lines)
+    if debug and num_examples > debug_size:
+      lines = lines[:debug_size]
+      num_examples = len(lines)
+    num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
+    print 'reading '+dataset, num_examples, num_steps
+
+    for i in range(num_steps):
+      imgs = np.zeros((batch_size, max_time, height, window_size, depth),
+          dtype=np.uint8)
+      time = np.zeros(batch_size, dtype=np.uint8)
+      words_embed = []
+
+      j = 0
+      while True:
+        line_index = count%num_examples
+        line = lines[line_index]
+        strings = line.split(' ')
+        filename = strings[0][1:]
+        word = filename.split('_')[1]
+        count += 1
+
+        img = cv2.imread(dataset_dir_vgg+filename)
+        h = height
+        scale = height/float(img.shape[0])
+        w = int(round(scale*img.shape[1]))
+        img = cv2.resize(img, (w, h))
+
+        cur_time = int(math.ceil((w+window_size)/float(stride)-1))
+        if cur_time > max_time or cur_time <= len(word):
+          continue
+        time[j] = cur_time
+
+        word_embed = np.zeros(len(word), dtype=np.uint8)
+        for k, char in enumerate(word):
+          word_embed[k] = char2index(char)
+        words_embed.append(word_embed)
+
+        for l in range(cur_time):
+          start1 = max((l+1)*stride-window_size, 0)
+          end1 = min((l+1)*stride, w)
+          start2 = max(-((l+1)*stride-window_size), 0)
+          end2 = min(start2+end1-start1, window_size)
+
+          imgs[j, l, :, start2:end2, :] = img[:, start1:end1, :]
+          if start2 != 0:
+            imgs[j, l, :, :start2, :] = imgs[j, l, :, start2][:, np.newaxis, :]
+          if end2 != window_size:
+            imgs[j, l, :, end2:, :] = imgs[j, l, :, end2-1][:, np.newaxis, :]
+
+        j += 1
+        if j == batch_size:
+          break
+
+      inputs = np.swapaxes(imgs, 0, 1)
+      inputs = [inputs[:time[m], m] for m in range(batch_size)]
+      inputs = np.concatenate(inputs, 0)
+
+      labels_sparse = dense2sparse(words_embed)
+
+      partition = np.arange(0, batch_size)
+      partition = np.repeat(partition, time)
+
+      epoch = i*batch_size/num_examples
+
+      yield (inputs, labels_sparse, time, partition, epoch)
+
 def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     embed_size, jittering_size, is_test):
   num_chars = char_imgs.shape[0]

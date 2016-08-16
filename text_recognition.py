@@ -14,7 +14,8 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
-      self.dataset_dir = json_data['dataset_dir_iiit5k']
+      self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
+      self.dataset_dir_vgg = json_data['dataset_dir_vgg']
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.depth = json_data['depth']
@@ -45,49 +46,13 @@ class Config():
 class TEXT_Model():
   def __init__(self, config):
     self.config = config
-    self.load_data(self.config.debug, self.config.test_only)
+    self.max_time = 30
     self.add_placeholders()
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
     self.loss = self.add_loss_op(self.outputs)
     self.pred, self.groundtruth, self.dists = self.add_decoder(self.outputs)
     self.train_op = self.add_training_op(self.loss)
-
-  def load_data(self, debug=False, test_only=False):
-    filename_test = os.path.join(self.config.dataset_dir, 'test.hdf5')
-    f_test = h5py.File(filename_test, 'r')
-    self.imgs_test = np.array(f_test.get('imgs'), dtype=np.uint8)
-    self.words_embed_test = f_test.get('words_embed')[()].tolist()
-    self.time_test = np.array(f_test.get('time'), dtype=np.uint8)
-    logger.info('loading test data (%d examples)', self.imgs_test.shape[0])
-    f_test.close()
-
-    if self.imgs_test.shape[0] > self.config.test_size:
-      self.imgs_test = self.imgs_test[:self.config.test_size]
-      self.words_embed_test = self.words_embed_test[:self.config.test_size]
-      self.time_test = self.time_test[:self.config.test_size]
-
-    if test_only:
-      self.max_time = np.amax(self.time_test)
-      self.imgs_test = self.imgs_test[:, :self.max_time]
-      return
-
-    filename_train = os.path.join(self.config.dataset_dir, 'train.hdf5')
-    f_train = h5py.File(filename_train, 'r')
-    self.imgs_train = np.array(f_train.get('imgs'), dtype=np.uint8)
-    self.words_embed_train = f_train.get('words_embed')[()].tolist()
-    self.time_train = np.array(f_train.get('time'), dtype=np.uint8)
-    logger.info('loading training data (%d examples)', self.imgs_train.shape[0])
-    f_train.close()
-
-    if self.config.debug:
-      self.imgs_train = self.imgs_train[:self.config.debug_size]
-      self.words_embed_train = self.words_embed_train[:self.config.debug_size]
-      self.time_train = self.time_train[:self.config.debug_size]
-
-    self.max_time = max(np.amax(self.time_train), np.amax(self.time_test))
-    self.imgs_train = self.imgs_train[:, :self.max_time]
-    self.imgs_test = self.imgs_test[:, :self.max_time]
 
   def add_placeholders(self):
     self.inputs_placeholder = tf.placeholder(tf.float32,
@@ -225,32 +190,33 @@ def main():
         corresponding_loss = np.load(model.config.ckpt_dir+'text_corr_loss.npy')
         logger.info('corresponding loss: '+str(corresponding_loss))
 
-    iterator_train = utils.data_iterator(
-        model.imgs_train, model.words_embed_train, model.time_train,
-        model.config.num_epochs, model.config.batch_size, model.max_time,
-        model.config.embed_size, model.config.jittering_size, False)
-
-    num_examples = model.imgs_train.shape[0]
-    num_steps = int(math.ceil(
-        num_examples*model.config.num_epochs/model.config.batch_size))
+    iterator_train = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
+        model.config.height, model.config.window_size, model.config.depth, \
+        model.config.embed_size, model.config.stride, model.max_time, \
+        model.config.num_epochs, model.config.batch_size,
+        True, model.config.debug, model.config.debug_size)
 
     losses_train = []
     cur_epoch = 0
     step_epoch = 0
-    for step, (inputs_train, labels_sparse_train, sequence_length_train,
+
+    for step_train, (inputs_train, labels_sparse_train, sequence_length_train,
         partition_train, epoch_train) in enumerate(iterator_train):
 
       # test
-      if step%model.config.test_and_save_every_n_steps == 0:
+      if step_train%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
         dists_test = np.zeros((model.config.batch_size))
-        iterator_test = utils.data_iterator(
-          model.imgs_test, model.words_embed_test, model.time_test,
-          1, model.config.batch_size, model.max_time,
-          model.config.embed_size, model.config.jittering_size, False)
+
+        iterator_test = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
+            model.config.height, model.config.window_size, model.config.depth, \
+            model.config.embed_size, model.config.stride, model.max_time, \
+            model.config.num_epochs, model.config.batch_size,
+            False, True, model.config.test_size)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             partition_test, epoch_test) in enumerate(iterator_test):
+
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_sparse_test,
                        model.sequence_length_placeholder: sequence_length_test,
@@ -301,26 +267,25 @@ def main():
           save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
           logger.info('model saved in file: %s', save_path)
 
+
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
-        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step,
+        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step_train,
             np.mean(losses_train[step_epoch:]))
-        #logger.info('average loss overall: %f', np.mean(losses_train))
-        step_epoch = step
+        step_epoch = step_train
         cur_epoch = epoch_train
 
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_sparse_train,
                     model.sequence_length_placeholder: sequence_length_train,
                     model.keep_prob_placeholder: model.config.keep_prob,
-                    model.keep_prob_transformer_placeholder: \
-                        model.config.keep_prob_transformer,
+                    model.keep_prob_transformer_placeholder: model.config.keep_prob_transformer,
                     model.partition_placeholder: partition_train}
 
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
-      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step,
+      logger.info('epoch %d, step %d: training loss = %f', epoch_train, step_train,
         ret_train[1])
 
 if __name__ == '__main__':
