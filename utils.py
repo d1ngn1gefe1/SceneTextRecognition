@@ -37,7 +37,7 @@ def char2index(char):
   elif ord(char) >= ord('a') and ord(char) <= ord('z'):
     return ord(char)-ord('a')+10
   else:
-    print 'char2index: invalid input'
+    logger.warning('char2index: invalid input')
     return -1
 
 def index2char(index):
@@ -48,7 +48,7 @@ def index2char(index):
   elif index == 36:
     return '_'
   else:
-    print 'index2char: invalid input'
+    logger.warning('index2char: invalid input')
     return '?'
 
 def dense2sparse(labels):
@@ -108,6 +108,9 @@ def data_iterator_vgg(dataset_dir_vgg, height, window_size, depth, embed_size, \
         count += 1
 
         img = cv2.imread(dataset_dir_vgg+filename)
+        if img is None:
+          logger.warning('image does not exist: %s', dataset_dir_vgg+filename)
+          continue
         h = height
         scale = height/float(img.shape[0])
         w = int(round(scale*img.shape[1]))
