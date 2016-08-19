@@ -23,8 +23,7 @@ class Config():
       self.jittering_size = int(json_data['jittering_percent']*self.height)
       self.stride = json_data['stride']
       self.lr = json_data['lr']
-      self.keep_prob = json_data['keep_prob']
-      self.keep_prob_transformer = json_data['keep_prob_transformer']
+      self.dropout = json_data['dropout']
       self.lstm_size = json_data['lstm_size']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
@@ -46,7 +45,7 @@ class Config():
 class TEXT_Model():
   def __init__(self, config):
     self.config = config
-    self.max_time = 30
+    self.max_time = 500
     self.add_placeholders()
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
@@ -62,8 +61,7 @@ class TEXT_Model():
     self.sequence_length_placeholder = tf.placeholder(tf.int32,
         shape=[self.config.batch_size])
     self.partition_placeholder = tf.placeholder(tf.int32)
-    self.keep_prob_placeholder = tf.placeholder(tf.float32)
-    self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
+    self.dropout_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
     lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size, state_is_tuple=True)
@@ -72,26 +70,10 @@ class TEXT_Model():
     stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
 
     with tf.variable_scope('TEXT') as scope:
-      # inputs_placeholder: sum(time) x height x window_size x depth
-      # logits: sum(time) x cnn_feature_size
-      logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
-          self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height, \
-          self.config.window_size, self.config.depth, \
-          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
-      self.variables_CHAR = variables_STN+variables_CNN
-
-      # data_rnn: a length max_time list of shape batch_size x 256
-      data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
-      for i in range(len(data_rnn)):
-        data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.max_time-self.sequence_length_placeholder[i], 256])])
-      data_rnn = tf.pack(data_rnn, 0)
-      data_rnn = tf.transpose(data_rnn, [1, 0, 2])
-      data_rnn = tf.reshape(data_rnn, [-1, 256])
-      data_rnn = tf.split(0, self.max_time, data_rnn)
-
+      # inputs_placeholder: batch_size x height x max_time x depth
       # rnn_outputs: batch_size x max_time x 2*lstm_size
       rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
-          stacked_lstm_cell_bw, data_rnn,
+          stacked_lstm_cell_bw, inputs_placeholder,
           sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
       rnn_outputs = tf.pack(rnn_outputs)
       rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
@@ -142,7 +124,7 @@ class TEXT_Model():
     for var in self.variables_CHAR:
       self.variables_LSTM_CTC.remove(var)
 
-    train_op1 = tf.train.AdamOptimizer(0.1*self.config.lr).minimize(loss, var_list=self.variables_CHAR)
+    train_op1 = tf.train.AdamOptimizer(0.01*self.config.lr).minimize(loss, var_list=self.variables_CHAR)
     train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
     train_op = tf.group(train_op1, train_op2)
 
@@ -220,8 +202,7 @@ def main():
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_sparse_test,
                        model.sequence_length_placeholder: sequence_length_test,
-                       model.keep_prob_placeholder: 1.0,
-                       model.keep_prob_transformer_placeholder: 1.0,
+                       model.dropout_placeholder: 0.0,
                        model.partition_placeholder: partition_test}
 
           ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth, model.x_trans],
@@ -278,8 +259,7 @@ def main():
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_sparse_train,
                     model.sequence_length_placeholder: sequence_length_train,
-                    model.keep_prob_placeholder: model.config.keep_prob,
-                    model.keep_prob_transformer_placeholder: model.config.keep_prob_transformer,
+                    model.dropout_placeholder: model.config.dropout,
                     model.partition_placeholder: partition_train}
 
       ret_train = session.run([model.train_op, model.loss],
