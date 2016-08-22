@@ -1,32 +1,36 @@
 {
   "dataset_dir_iiit5k": "/home/local/ANT/zelunluo/IIIT5K/",
   "dataset_dir_vgg": "/d0/data/users/zelunluo/vgg/",
-  "use_vgg": true,
-  "train_ratio": 0.8,
+  "use_iiit5k": true,
+
   "height": 32,
   "window_size": 32,
-  "depth": 3,
-  "embed_size": 37,
-  "jittering_percent": 0.15,
   "stride": 8,
+  "max_timestep": 100,
+  "jittering_percent": 0.15,
+  "embed_size": 37,
+
   "lr": 1e-4,
-  "keep_prob": 0.3,
-  "keep_prob_transformer": 0.8,
-  "lstm_size": 128,
   "num_epochs": 10000,
   "batch_size": 128,
+
+  "lstm_size": 128,
+  "num_lstm_layer": 3,
+
+  "keep_prob": 0.3,
+  "keep_prob_transformer": 0.8,
+
   "debug": false,
   "debug_size": 640,
-  "load_char_ckpt": true,
-  "load_text_ckpt": true,
+  "load_char_ckpt": false,
+  "load_text_ckpt": false,
   "text_load_char_ckpt": false,
   "ckpt_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/checkpoint/",
   "test_only": false,
   "test_and_save_every_n_steps": 1280,
   "test_size": 6400,
-  "visualize": false,
+  "visualize": true,
   "visualize_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/visualize/",
-  "gpu": 0,
-  "num_lstm_layer": 3,
-  "print_pred": false
+  "print_pred": false,
+  "use_baseline": false
 }

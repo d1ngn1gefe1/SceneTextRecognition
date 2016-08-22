@@ -1,10 +1,10 @@
-import numpy as np
-import tensorflow as tf
-import math
 import cv2
 import logging
+import math
+import numpy as np
 import os
 from random import randint
+import scipy.io
 
 np.set_printoptions(threshold=np.nan)
 
@@ -22,6 +22,21 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+def dense2sparse(labels):
+  x_ix = []
+  x_val = []
+
+  for b, label in enumerate(labels):
+    for t, val in enumerate(label):
+      if t < label.shape[0]:
+        x_ix.append([b, t])
+        x_val.append(val)
+
+  x_shape = [len(labels), np.asarray(x_ix).max(0)[1]+1]
+
+  return (x_ix, x_val, x_shape)
+
+# return: an integer
 def char2index(char):
   """Convert a character into an index (case insentitive)
     index 0 - 9: '0' - '9'
@@ -40,6 +55,7 @@ def char2index(char):
     logger.warning('char2index: invalid input')
     return -1
 
+# return: a string
 def index2char(index):
   if index >= 0 and index <= 9:
     return chr(ord('0')+index)
@@ -51,109 +67,151 @@ def index2char(index):
     logger.warning('index2char: invalid input')
     return '?'
 
-def dense2sparse(labels):
-  x_ix = []
-  x_val = []
+# return: an numpy array
+def word2indices(word):
+  word_embed = np.zeros(len(word), dtype=np.uint8)
+  for i, char in enumerate(word):
+    word_embed[i] = char2index(char)
+  return word_embed
 
-  for b, label in enumerate(labels):
-    for t, val in enumerate(label):
-      if t < label.shape[0]:
-        x_ix.append([b, t])
-        x_val.append(val)
-
-  x_shape = [len(labels), np.asarray(x_ix).max(0)[1]+1]
-
-  return (x_ix, x_val, x_shape)
-
+# return: a string
 def indices2word(indices):
   word = ''
   for index in indices:
     word += index2char(index)
   return word
 
+# return: a list of strings
 def indices2d2words(indices2d):
   words = []
   for indices in indices2d:
     words.append(indices2word(indices))
   return words
 
-def data_iterator_vgg(dataset_dir_vgg, height, window_size, depth, embed_size, \
-    stride, max_time, num_epochs, batch_size, is_train, debug, debug_size, \
-    jittering_size):
-  count = 0
-  dataset = 'annotation_train.txt' if is_train else 'annotation_val.txt'
+def data_iterator(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
+    height, window_size, stride, max_timestep, jittering_percent, \
+    num_epochs, batch_size, \
+    is_train, debug, debug_size, visualize, visualize_dir):
 
-  with open(dataset_dir_vgg+dataset) as f:
-    lines = f.readlines()
-    num_examples = len(lines)
-    if debug and num_examples > debug_size:
-      lines = lines[:debug_size]
-      num_examples = len(lines)
-    num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
-    print 'reading '+dataset, num_examples, num_steps
+  if use_iiit5k:
+    dataset_dir = dataset_dir_iiit5k
+    train_dict = scipy.io.loadmat(dataset_dir+'trainCharBound.mat')
+    train_data = np.squeeze(train_dict['trainCharBound'])
+    test_dict = scipy.io.loadmat(dataset_dir + 'testCharBound.mat')
+    test_data = np.squeeze(test_dict['testCharBound'])
+    if is_train:
+      data = np.concatenate((train_data, test_data[:2000]))
+      dataset = dataset_dir+'trainCharBound.mat'
+    else:
+      data = test_data[2000:]
+      dataset = dataset_dir+'testCharBound.mat'
+  else:
+    dataset_dir = dataset_dir_vgg
+    dataset_name = 'annotation_train.txt' if is_train else 'annotation_val.txt'
+    with open(dataset_dir+dataset_name) as f:
+      data = f.readlines()
+      dataset = dataset_dir+dataset_name
 
-    for i in range(num_steps):
-      imgs = np.zeros((batch_size, max_time, height, window_size, depth),
-          dtype=np.uint8)
-      time = np.zeros(batch_size, dtype=np.uint8)
-      words_embed = []
+  num_examples = min(debug_size, len(data)) if debug else len(data)
+  num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
+  print 'reading '+dataset, num_examples, num_steps
 
-      j = 0
-      while True:
-        line_index = count%num_examples
-        line = lines[line_index]
-        strings = line.split(' ')
-        filename = strings[0][1:]
-        word = filename.split('_')[1]
-        count += 1
+  if visualize and not os.path.exists(visualize_dir):
+    os.makedirs(visualize_dir)
 
-        img = cv2.imread(dataset_dir_vgg+filename)
-        if img is None:
-          logger.warning('image does not exist: %s', dataset_dir_vgg+filename)
-          continue
-        h = height
-        scale = height/float(img.shape[0])
-        w = int(round(scale*img.shape[1]))
-        img = cv2.resize(img, (w, h))
+  for i in range(num_steps):
+    imgs = []
+    timesteps = []
+    word_embeds = []
 
-        cur_time = int(math.ceil((w+window_size)/float(stride)-1))
-        if cur_time > max_time or cur_time <= len(word):
-          continue
-        time[j] = cur_time
+    num_bad_examples = 0
+    j = 0
+    while True:
+      index = (i*batch_size+j)%num_examples
+      if use_iiit5k:
+        img_path = data[index][0][0]
+        word = str(data[index][1][0])
+      else:
+        img_path = data[index].split(' ')[0][1:]
+        word = img_path.split('_')[1]
 
-        word_embed = np.zeros(len(word), dtype=np.uint8)
-        for k, char in enumerate(word):
-          word_embed[k] = char2index(char)
-        words_embed.append(word_embed)
+      # load image
+      img = cv2.imread(dataset_dir+img_path, cv2.IMREAD_GRAYSCALE)
+      if img is None:
+        logger.warning('image does not exist: %s', dataset_dir+filename)
+        num_bad_examples += 1
+        continue
+      img = cv2.equalizeHist(img)
+      h_jittering = int(round(height*(1+jittering_percent)))
+      scale = h_jittering/float(img.shape[0])
+      w_jittering = int(round(scale*img.shape[1]))
+      img = cv2.resize(img, (w_jittering, h_jittering))
+      jittering_size = h_jittering-height
+      window_size_jittering = window_size+jittering_size
+      # print 'img', h_jittering, w_jittering, jittering_size
 
-        for l in range(cur_time):
-          start1 = max((l+1)*stride-window_size, 0)
-          end1 = min((l+1)*stride, w)
-          start2 = max(-((l+1)*stride-window_size), 0)
-          end2 = min(start2+end1-start1, window_size)
+      # timestep
+      # first window: [(0-2)*stride, (0-2)*stride+w)
+      # last window: [(i-2)*stride, (i-2)*stride+w) such that
+      #   (i-2)*stride >= w_jittering-2*stride and
+      #   (i-3)*stride < w_jittering-2*stride
+      # cur_timestep = i+1
+      cur_timestep = int(math.ceil(w_jittering/float(stride)))+1
+      if cur_timestep > max_timestep or cur_timestep <= len(word):
+        logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
+        num_bad_examples += 1
+        continue
+      timesteps.append(cur_timestep)
+      # print 'timestep', cur_timestep, max_timestep
 
-          imgs[j, l, :, start2:end2, :] = img[:, start1:end1, :]
-          if start2 != 0:
-            imgs[j, l, :, :start2, :] = imgs[j, l, :, start2][:, np.newaxis, :]
-          if end2 != window_size:
-            imgs[j, l, :, end2:, :] = imgs[j, l, :, end2-1][:, np.newaxis, :]
+      # word_embed
+      word_embed = word2indices(word)
+      word_embeds.append(word_embed)
+      # print 'word_embed', word, word_embed
 
-        j += 1
-        if j == batch_size:
-          break
+      # img
+      for k in range(cur_timestep):
+        # crop an image for current timestep
+        start_src = max((k-2)*stride, 0)
+        end_src = min((k-2)*stride+window_size_jittering, w_jittering)
+        start_des = max(-(k-2)*stride, 0)
+        end_des = min(start_des+end_src-start_src, window_size_jittering)
+        #print start_src, end_src, start_des, end_des
+        img_crop = np.zeros((h_jittering, window_size_jittering), dtype=np.uint8)
+        img_crop[:, start_des:end_des] = img[:, start_src:end_src]
 
-      inputs = np.swapaxes(imgs, 0, 1)
-      inputs = [inputs[:time[m], m] for m in range(batch_size)]
-      inputs = np.concatenate(inputs, 0)
+        # fill empty space at start and end
+        if start_des != 0:
+          img_crop[:, :start_des] = img_crop[:, start_des][:, np.newaxis]
+        if end_des != window_size:
+          img_crop[:, end_des:] = img_crop[:, end_des-1][:, np.newaxis]
 
-      labels_sparse = dense2sparse(words_embed)
+        # jittering
+        if is_train:
+          rand_x = randint(0, jittering_size)
+          rand_y = randint(0, jittering_size)
+        else:
+          # crop window at the center
+          rand_x = int(jittering_size/2)
+          rand_y = int(jittering_size/2)
+        img_crop = img_crop[rand_y:rand_y+height, rand_x:rand_x+window_size]
+        imgs.append(img_crop[:, :, np.newaxis])
+        # print img_crop.shape
 
-      partition = np.arange(0, batch_size)
-      partition = np.repeat(partition, time)
+        if visualize and i < 5 and j < 5:
+          cv2.imwrite(visualize_dir+str(i)+'_'+str(j)+'_'+str(k)+'.jpg', img_crop)
 
-      epoch = i*batch_size/num_examples
+      j += 1
+      if j == batch_size:
+        break
 
-      yield (inputs, labels_sparse, time, partition, epoch)
+    inputs = np.stack(imgs)
+    labels_sparse = dense2sparse(word_embeds)
+    partition = np.arange(0, batch_size)
+    partition = np.repeat(partition, timesteps)
+    epoch = i*batch_size/num_examples
+
+    yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 def data_iterator_char(char_imgs, chars_embed, num_epochs, batch_size,
     embed_size, jittering_size, is_test):

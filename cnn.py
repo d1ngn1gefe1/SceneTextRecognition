@@ -3,14 +3,14 @@ import numpy as np
 from spatial_transformer import transformer
 
 
-def CNN(x, height, width, depth, keep_prob, keep_prob_transformer):
-  # x: batch_size x height x width x depth
+def CNN(x, height, width, keep_prob, keep_prob_transformer):
+  # x: batch_size x height x width
 
   eps = 1e-5
 
   # localisation network
   with tf.variable_scope('loc-conv1') as scope:
-    W_loc_conv1 = tf.get_variable('Weight', [5, 5, depth, 20],
+    W_loc_conv1 = tf.get_variable('Weight', [5, 5, 1, 20],
         initializer=tf.contrib.layers.xavier_initializer())
     b_loc_conv1 = tf.get_variable('Bias', [20],
         initializer=tf.constant_initializer(0))
@@ -63,7 +63,7 @@ def CNN(x, height, width, depth, keep_prob, keep_prob_transformer):
 
   # CNN for char recognition
   with tf.variable_scope('conv1') as scope:
-    W_conv1 = tf.get_variable('Weight', [5, 5, depth, 32],
+    W_conv1 = tf.get_variable('Weight', [5, 5, 1, 32],
         initializer=tf.contrib.layers.xavier_initializer())
     b_conv1 = tf.get_variable('Bias', [32],
         initializer=tf.constant_initializer(0))

@@ -16,37 +16,42 @@ class Config():
       json_data = json.load(json_file)
       self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
       self.dataset_dir_vgg = json_data['dataset_dir_vgg']
+      self.use_iiit5k = json_data['use_iiit5k']
+
       self.height = json_data['height']
       self.window_size = json_data['window_size']
-      self.depth = json_data['depth']
-      self.embed_size = json_data['embed_size']
-      self.jittering_size = int(json_data['jittering_percent']*self.height)
       self.stride = json_data['stride']
+      self.max_timestep = json_data['max_timestep']
+      self.jittering_percent = json_data['jittering_percent']
+      self.embed_size = json_data['embed_size']
+
       self.lr = json_data['lr']
-      self.keep_prob = json_data['keep_prob']
-      self.keep_prob_transformer = json_data['keep_prob_transformer']
-      self.lstm_size = json_data['lstm_size']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
+
+      self.lstm_size = json_data['lstm_size']
+      self.num_lstm_layer = json_data['num_lstm_layer']
+
+      self.keep_prob = json_data['keep_prob']
+      self.keep_prob_transformer = json_data['keep_prob_transformer']
+
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
-      self.text_load_char_ckpt = json_data['text_load_char_ckpt']
       self.load_text_ckpt = json_data['load_text_ckpt']
+      self.text_load_char_ckpt = json_data['text_load_char_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.test_only = json_data['test_only']
       self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
       self.test_size = json_data['test_size']
       self.test_size = self.test_size-self.test_size%self.batch_size
-      self.gpu = json_data['gpu']
-      self.num_lstm_layer = json_data['num_lstm_layer']
-      self.print_pred = json_data['print_pred']
       self.visualize = json_data['visualize']
       self.visualize_dir = json_data['visualize_dir']
+      self.print_pred = json_data['print_pred']
+      self.use_baseline = json_data['use_baseline']
 
 class TEXT_Model():
   def __init__(self, config):
     self.config = config
-    self.max_time = 30
     self.add_placeholders()
     self.rnn_outputs = self.add_model()
     self.outputs = self.add_projection(self.rnn_outputs)
@@ -56,8 +61,7 @@ class TEXT_Model():
 
   def add_placeholders(self):
     self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[None, self.config.height, self.config.window_size,
-        self.config.depth])
+        shape=[self.config.batch_size, self.config.height, self.config.window_size, 1])
     self.labels_placeholder = tf.sparse_placeholder(tf.int32)
     self.sequence_length_placeholder = tf.placeholder(tf.int32,
         shape=[self.config.batch_size])
@@ -72,22 +76,22 @@ class TEXT_Model():
     stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
 
     with tf.variable_scope('TEXT') as scope:
-      # inputs_placeholder: sum(time) x height x window_size x depth
+      # inputs_placeholder: sum(time) x height x window_size x 1
       # logits: sum(time) x cnn_feature_size
       logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
-          self.x_trans = cnn.CNN(self.inputs_placeholder, self.config.height, \
-          self.config.window_size, self.config.depth, \
+          self.x_trans = cnn.CNN(self.inputs_placeholder, \
+          self.config.height, self.config.window_size, \
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
       self.variables_CHAR = variables_STN+variables_CNN
 
-      # data_rnn: a length max_time list of shape batch_size x 256
+      # data_rnn: a length max_timestep list of shape batch_size x 256
       data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
       for i in range(len(data_rnn)):
-        data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.max_time-self.sequence_length_placeholder[i], 256])])
+        data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.config.max_timestep-self.sequence_length_placeholder[i], 256])])
       data_rnn = tf.pack(data_rnn, 0)
       data_rnn = tf.transpose(data_rnn, [1, 0, 2])
       data_rnn = tf.reshape(data_rnn, [-1, 256])
-      data_rnn = tf.split(0, self.max_time, data_rnn)
+      data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
 
       # rnn_outputs: batch_size x max_time x 2*lstm_size
       rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
@@ -107,13 +111,13 @@ class TEXT_Model():
           initializer=tf.constant_initializer(0.0))
 
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
-          (self.config.batch_size*self.max_time, 2*self.config.lstm_size))
+          (self.config.batch_size*self.config.max_timestep, 2*self.config.lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
       outputs = tf.nn.log_softmax(outputs)
-      outputs = tf.reshape(outputs, (self.config.batch_size, self.max_time, -1))
+      outputs = tf.reshape(outputs, (self.config.batch_size, self.config.max_timestep, -1))
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
 
-      # outputs: max_time x batch_size x embed_size
+      # outputs: max_timestep x batch_size x embed_size
     return outputs
 
   def add_loss_op(self, outputs):
@@ -190,11 +194,13 @@ def main():
         corresponding_loss = np.load(model.config.ckpt_dir+'text_corr_loss.npy')
         logger.info('corresponding loss: '+str(corresponding_loss))
 
-    iterator_train = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
-        model.config.height, model.config.window_size, model.config.depth, \
-        model.config.embed_size, model.config.stride, model.max_time, \
-        model.config.num_epochs, model.config.batch_size, True, \
-        model.config.debug, model.config.debug_size, model.config.jittering_size)
+    iterator_train = utils.data_iterator( \
+        model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg, \
+        model.config.use_iiit5k, model.config.height, model.config.window_size, \
+        model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+        model.config.num_epochs, model.config.batch_size, \
+        True, model.config.debug, model.config.debug_size, \
+        model.config.visualize, model.config.visualize_dir)
 
     losses_train = []
     cur_epoch = 0
@@ -208,11 +214,13 @@ def main():
         losses_test = []
         dists_test = np.zeros((model.config.batch_size))
 
-        iterator_test = utils.data_iterator_vgg(model.config.dataset_dir_vgg, \
-            model.config.height, model.config.window_size, model.config.depth, \
-            model.config.embed_size, model.config.stride, model.max_time, 1, \
-            model.config.batch_size, False, True, model.config.test_size, \
-            model.config.jittering_size)
+        iterator_test = utils.data_iterator( \
+            model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg,
+            model.config.use_iiit5k, model.config.height, model.config.window_size, \
+            model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+            1, model.config.batch_size, \
+            False, True, model.config.test_size, \
+            model.config.visualize, model.config.visualize_dir)
 
         for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
             partition_test, epoch_test) in enumerate(iterator_test):
@@ -236,12 +244,12 @@ def main():
               print pred[i], groundtruth[i]
 
           # visualize the STN results
-          if model.config.visualize and step_test < 1:
-            utils.save_imgs(inputs_test.reshape(-1, model.config.height,
-                model.config.window_size, model.config.depth),
-                model.config.visualize_dir, 'original'+str(step_test)+'-')
-            utils.save_imgs(ret_test[4], model.config.visualize_dir,
-                'trans'+str(step_test)+'-')
+        #   if model.config.visualize and step_test < 1:
+        #     utils.save_imgs(inputs_test.reshape(-1, model.config.height,
+        #         model.config.window_size),
+        #         model.config.visualize_dir, 'original'+str(step_test)+'-')
+        #     utils.save_imgs(ret_test[4], model.config.visualize_dir,
+        #         'trans'+str(step_test)+'-')
 
         cur_loss = np.mean(losses_test)
         cur_dist = np.mean(dists_test)
@@ -266,7 +274,6 @@ def main():
         else:
           save_path = model.saver.save(session, model.config.ckpt_dir+'model_full.ckpt')
           logger.info('model saved in file: %s', save_path)
-
 
       # new epoch, calculate average loss from last epoch
       if epoch_train != cur_epoch:
