@@ -1,14 +1,15 @@
-import tensorflow as tf
-import numpy as np
-import utils
-from utils import logger
 import cnn
 import h5py
-import math
-import os
-import time
 import json
+import math
+import numpy as np
+import os
 import sys
+import tensorflow as tf
+import time
+import utils
+from utils import logger
+
 
 class Config():
   def __init__(self):

@@ -1,10 +1,12 @@
 import cv2
+import h5py
 import logging
 import math
 import numpy as np
 import os
 from random import randint
 import scipy.io
+
 
 np.set_printoptions(threshold=np.nan)
 
@@ -308,20 +310,30 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
     yield (inputs, labels_sparse, timesteps, epoch)
 
 
-def data_iterator_char(dataset_dir_iiit5k, height, window_size, \
-    num_epochs, batch_size, embed_size, jittering_percent, is_train, \
-    visualize, visualize_dir):
+def data_iterator_char(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k, \
+    height, window_size, num_epochs, batch_size, embed_size, \
+    jittering_percent, is_train, visualize, visualize_dir):
 
-  train_dict = scipy.io.loadmat(dataset_dir_iiit5k+'trainCharBound.mat')
-  train_data = np.squeeze(train_dict['trainCharBound'])
-  test_dict = scipy.io.loadmat(dataset_dir_iiit5k+'testCharBound.mat')
-  test_data = np.squeeze(test_dict['testCharBound'])
-  if is_train:
-    data = np.concatenate((train_data, test_data[:2000]))
-    dataset = dataset_dir_iiit5k+'trainCharBound.mat'
+  if use_iiit5k:
+    train_dict = scipy.io.loadmat(dataset_dir_iiit5k+'trainCharBound.mat')
+    train_data = np.squeeze(train_dict['trainCharBound'])
+    test_dict = scipy.io.loadmat(dataset_dir_iiit5k+'testCharBound.mat')
+    test_data = np.squeeze(test_dict['testCharBound'])
+    if is_train:
+      data = np.concatenate((train_data, test_data[:2000]))
+      dataset = dataset_dir_iiit5k+'trainCharBound.mat'
+    else:
+      data = test_data[2000:]
+      dataset = dataset_dir_iiit5k+'testCharBound.mat'
   else:
-    data = test_data[2000:]
-    dataset = dataset_dir_iiit5k+'testCharBound.mat'
+    # not working
+    f = h5py.File(dataset_dir_vgg+'case-insensitive-train.mat')
+    data = f.get('#refs#')
+    for i, key in enumerate(data.iterkeys()):
+      img = np.array(data.get(key), dtype=np.uint8)
+      cv2.imshow('image', img)
+      cv2.waitKey(0)
+    return
 
   num_examples = len(data)
   num_steps = int(math.ceil(num_examples*num_epochs/batch_size))
