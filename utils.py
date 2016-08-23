@@ -282,15 +282,18 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
         logger.warning('image does not exist: %s', dataset_dir+filename)
         num_bad_examples += 1
         continue
-      h = int(round(height))
+      h = height
       scale = h/float(img.shape[0])
       w = int(round(scale*img.shape[1]))
       img = cv2.resize(img, (w, h))
-      imgs.append(np.swapaxis(img, 0, 1))
       # print 'img', h, w
 
       # timestep
       cur_timestep = w
+      if cur_timestep > max_timestep or cur_timestep <= len(word):
+        logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
+        num_bad_examples += 1
+        continue
       timesteps.append(cur_timestep)
       # print 'timestep', cur_timestep, max_timestep
 
@@ -299,15 +302,21 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
       word_embeds.append(word_embed)
       # print 'word_embed', word, word_embed
 
+      # img
+      imgs.append(img)
+
       j += 1
       if j == batch_size:
         break
 
-    inputs = np.stack(imgs)
+    inputs = np.concatenate(imgs, axis=1)
+    inputs = np.swapaxes(inputs, 0, 1)
     labels_sparse = dense2sparse(word_embeds)
+    partition = np.arange(0, batch_size)
+    partition = np.repeat(partition, timesteps)
     epoch = i*batch_size/num_examples
 
-    yield (inputs, labels_sparse, timesteps, epoch)
+    yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 
 def data_iterator_char(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k, \
@@ -406,3 +415,51 @@ def data_iterator_char(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k, \
     epoch = i*batch_size/num_examples
 
     yield (inputs, labels, epoch)
+
+
+def get_info(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k, \
+    height, window_size, stride, num_epochs, batch_size):
+
+  if use_iiit5k:
+    dataset_dir = dataset_dir_iiit5k
+    train_dict = scipy.io.loadmat(dataset_dir+'trainCharBound.mat')
+    train_data = np.squeeze(train_dict['trainCharBound'])
+    test_dict = scipy.io.loadmat(dataset_dir+'testCharBound.mat')
+    test_data = np.squeeze(test_dict['testCharBound'])
+    data = np.concatenate((train_data, test_data))
+  else:
+    dataset_dir = dataset_dir_vgg
+    with open(dataset_dir+'annotation_train.txt') as f:
+      data1 = f.readlines()
+    with open(dataset_dir+'annotation_val.txt') as f:
+      data2 = f.readlines()
+    data = data1+data2
+
+  num_examples = len(data)
+  print num_examples
+
+  timesteps = []
+  widths = []
+
+  for i in range(num_examples):
+    if use_iiit5k:
+      img_path = data[i][0][0]
+      word = str(data[i][1][0])
+    else:
+      img_path = data[i].split(' ')[0][1:]
+      word = img_path.split('_')[1]
+
+    img = cv2.imread(dataset_dir+img_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+      logger.warning('image does not exist: %s', dataset_dir+filename)
+      continue
+    h = height
+    scale = h/float(img.shape[0])
+    w = int(round(scale*img.shape[1]))
+    widths.append(w)
+
+    cur_timestep = int(math.ceil(w/float(stride)))+1
+    timesteps.append(cur_timestep)
+
+  print max(timesteps), max(widths)
+  print np.bincount(np.array(widths))

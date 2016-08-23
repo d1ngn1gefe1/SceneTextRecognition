@@ -4,6 +4,7 @@ import json
 import math
 import numpy as np
 import os
+import stn
 import sys
 import tensorflow as tf
 import time
@@ -31,11 +32,8 @@ class Config():
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
 
-      self.lstm_size = json_data['lstm_size']
       self.num_lstm_layer = json_data['num_lstm_layer']
-
-      self.keep_prob = json_data['keep_prob']
-      self.keep_prob_transformer = json_data['keep_prob_transformer']
+      self.use_stn = json_data['use_stn']
 
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
@@ -63,58 +61,92 @@ class TEXT_Model():
     self.train_op = self.add_training_op(self.loss)
 
   def add_placeholders(self):
-    self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[None, self.config.height, self.config.window_size, 1])
+    if self.config.use_baseline:
+      self.inputs_placeholder = tf.placeholder(tf.float32,
+          shape=[None, self.config.height])
+    else:
+      self.inputs_placeholder = tf.placeholder(tf.float32,
+          shape=[None, self.config.height, self.config.window_size, 1])
     self.labels_placeholder = tf.sparse_placeholder(tf.int32)
-    self.sequence_length_placeholder = tf.placeholder(tf.int32,
-        shape=[self.config.batch_size])
+    self.timesteps_placeholder = tf.placeholder(tf.int32)
     self.partition_placeholder = tf.placeholder(tf.int32)
-    self.keep_prob_placeholder = tf.placeholder(tf.float32)
-    self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
+    self.dropout_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
-    lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size, state_is_tuple=True)
-    stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer, state_is_tuple=True)
-    lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(self.config.lstm_size, state_is_tuple=True)
-    stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
-
     with tf.variable_scope('TEXT') as scope:
-      # inputs_placeholder: sum(time) x height x window_size x 1
-      # logits: sum(time) x cnn_feature_size
-      logits, variables_STN, variables_CNN, self.saver_STN, self.saver_CNN, \
-          self.x_trans = cnn.CNN(self.inputs_placeholder, \
-          self.config.height, self.config.window_size, \
-          self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
-      self.variables_CHAR = variables_STN+variables_CNN
+      if self.config.use_baseline:
+        # inputs_placeholder: sum(time) x height
+        data_rnn = tf.dynamic_partition(self.inputs_placeholder, self.partition_placeholder, self.config.batch_size)
+        for i in range(len(data_rnn)):
+          data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.config.max_timestep-self.timesteps_placeholder[i], self.config.height])])
+        data_rnn = tf.pack(data_rnn, 0)
+        data_rnn = tf.transpose(data_rnn, [1, 0, 2])
+        data_rnn = tf.reshape(data_rnn, [-1, self.config.height])
+        data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
 
-      # data_rnn: a length max_timestep list of shape batch_size x 256
-      data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
-      for i in range(len(data_rnn)):
-        data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.config.max_timestep-self.sequence_length_placeholder[i], 256])])
-      data_rnn = tf.pack(data_rnn, 0)
-      data_rnn = tf.transpose(data_rnn, [1, 0, 2])
-      data_rnn = tf.reshape(data_rnn, [-1, 256])
-      data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
+        lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(self.config.height, state_is_tuple=True)
+        stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer, state_is_tuple=True)
+        lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(self.config.height, state_is_tuple=True)
+        stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
+        rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
+            stacked_lstm_cell_bw, data_rnn,
+            sequence_length=self.timesteps_placeholder, dtype=tf.float32)
+        rnn_outputs = tf.pack(rnn_outputs)
+        rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
+      else:
+        # inputs_placeholder: sum(time) x height x window_size x 1
+        # logits: sum(time) x cnn_feature_size (128)
+        if self.config.use_stn:
+          self.x_trans, variables_STN, self.saver_STN = stn.STN( \
+              self.inputs_placeholder, self.dropout_placeholder, \
+              self.config.height, self.config.window_size)
+          logits, variables_CNN, self.saver_CNN = cnn.CNN( \
+              self.x_trans, self.dropout_placeholder, \
+              self.config.height, self.config.window_size)
+          self.variables_CHAR = variables_STN+variables_CNN
+        else:
+          logits, variables_CNN, self.saver_CNN = cnn.CNN( \
+              self.inputs_placeholder, self.dropout_placeholder, \
+              self.config.height, self.config.window_size)
+          self.variables_CHAR = variables_CNN
 
-      # rnn_outputs: batch_size x max_time x 2*lstm_size
-      rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
-          stacked_lstm_cell_bw, data_rnn,
-          sequence_length=self.sequence_length_placeholder, dtype=tf.float32)
-      rnn_outputs = tf.pack(rnn_outputs)
-      rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
+        # data_rnn: a length max_timestep list of shape batch_size x cnn_feature_size (128)
+        data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
+        for i in range(len(data_rnn)):
+          data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.config.max_timestep-self.timesteps_placeholder[i], 128])])
+        data_rnn = tf.pack(data_rnn, 0)
+        data_rnn = tf.transpose(data_rnn, [1, 0, 2])
+        data_rnn = tf.reshape(data_rnn, [-1, 128])
+        data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
+
+        # rnn_outputs: batch_size x max_timestep x 2*cnn_feature_size (128)
+        lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(128, state_is_tuple=True)
+        stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer, state_is_tuple=True)
+        lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(128, state_is_tuple=True)
+        stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
+        rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
+            stacked_lstm_cell_bw, data_rnn,
+            sequence_length=self.timesteps_placeholder, dtype=tf.float32)
+        rnn_outputs = tf.pack(rnn_outputs)
+        rnn_outputs = tf.transpose(rnn_outputs, [1, 0, 2])
 
     return rnn_outputs
 
   def add_projection(self, rnn_outputs):
+    if self.config.use_baseline:
+      lstm_size = self.config.height
+    else:
+      lstm_size = 128
+
     with tf.variable_scope('Projection'):
-      W = tf.get_variable('Weight', [2*self.config.lstm_size,
+      W = tf.get_variable('Weight', [2*lstm_size,
           self.config.embed_size],
           initializer=tf.contrib.layers.xavier_initializer())
       b = tf.get_variable('Bias', [self.config.embed_size],
           initializer=tf.constant_initializer(0.0))
 
       rnn_outputs_reshape = tf.reshape(rnn_outputs,
-          (self.config.batch_size*self.config.max_timestep, 2*self.config.lstm_size))
+          (self.config.batch_size*self.config.max_timestep, 2*lstm_size))
       outputs = tf.matmul(rnn_outputs_reshape, W)+b
       outputs = tf.nn.log_softmax(outputs)
       outputs = tf.reshape(outputs, (self.config.batch_size, self.config.max_timestep, -1))
@@ -125,14 +157,14 @@ class TEXT_Model():
 
   def add_loss_op(self, outputs):
     loss = tf.nn.ctc_loss(outputs, self.labels_placeholder,
-        self.sequence_length_placeholder)
+        self.timesteps_placeholder)
     loss = tf.reduce_mean(loss)
 
     return loss
 
   def add_decoder(self, outputs):
     decoded, _ = tf.nn.ctc_beam_search_decoder(outputs,
-        self.sequence_length_placeholder, merge_repeated=False)
+        self.timesteps_placeholder, merge_repeated=False)
     decoded = tf.to_int32(decoded[0])
 
     pred = tf.sparse_tensor_to_dense(decoded,
@@ -146,14 +178,17 @@ class TEXT_Model():
   def add_training_op(self, loss):
     self.variables_LSTM_CTC = tf.trainable_variables()
 
-    for var in self.variables_CHAR:
-      self.variables_LSTM_CTC.remove(var)
+    if self.config.use_baseline:
+      train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+    else:
+      for var in self.variables_CHAR:
+        self.variables_LSTM_CTC.remove(var)
 
-    train_op1 = tf.train.AdamOptimizer(0.1*self.config.lr).minimize(loss, var_list=self.variables_CHAR)
-    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
-    train_op = tf.group(train_op1, train_op2)
+      train_op1 = tf.train.AdamOptimizer(0.1*self.config.lr).minimize(loss, var_list=self.variables_CHAR)
+      train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss, var_list=self.variables_LSTM_CTC)
+      train_op = tf.group(train_op1, train_op2)
 
-    return train_op2
+    return train_op
 
 def main():
   config = Config()
@@ -165,6 +200,10 @@ def main():
 
   config = tf.ConfigProto(allow_soft_placement=True)
 
+  # utils.get_info(model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg, \
+  #     model.config.use_iiit5k, model.config.height, model.config.window_size, \
+  #     model.config.stride, model.config.num_epochs, model.config.batch_size)
+
   with tf.Session(config=config) as session:
     session.run(init)
     best_loss = float('inf')
@@ -175,8 +214,9 @@ def main():
 
     # restore previous session
     if model.config.text_load_char_ckpt:
-      if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_stn.ckpt'):
-        model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+      if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt'):
+        if model.config.use_stn:
+          model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
         model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
         logger.info('char model restored')
     elif model.config.load_text_ckpt or model.config.test_only:
@@ -197,19 +237,28 @@ def main():
         corresponding_loss = np.load(model.config.ckpt_dir+'text_corr_loss.npy')
         logger.info('corresponding loss: '+str(corresponding_loss))
 
-    iterator_train = utils.data_iterator( \
-        model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg, \
-        model.config.use_iiit5k, model.config.height, model.config.window_size, \
-        model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
-        model.config.num_epochs, model.config.batch_size, \
-        True, model.config.debug, model.config.debug_size, \
-        model.config.visualize, model.config.visualize_dir)
+    if model.config.use_baseline:
+      iterator_train = utils.data_iterator_baseline( \
+          model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg, \
+          model.config.use_iiit5k, model.config.height, model.config.window_size, \
+          model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+          model.config.num_epochs, model.config.batch_size, \
+          True, model.config.debug, model.config.debug_size, \
+          model.config.visualize, model.config.visualize_dir)
+    else:
+      iterator_train = utils.data_iterator( \
+          model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg, \
+          model.config.use_iiit5k, model.config.height, model.config.window_size, \
+          model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+          model.config.num_epochs, model.config.batch_size, \
+          True, model.config.debug, model.config.debug_size, \
+          model.config.visualize, model.config.visualize_dir)
 
     losses_train = []
     cur_epoch = 0
     step_epoch = 0
 
-    for step_train, (inputs_train, labels_sparse_train, sequence_length_train,
+    for step_train, (inputs_train, labels_sparse_train, timesteps_train,
         partition_train, epoch_train) in enumerate(iterator_train):
 
       # test
@@ -217,25 +266,33 @@ def main():
         losses_test = []
         dists_test = np.zeros((model.config.batch_size))
 
-        iterator_test = utils.data_iterator( \
-            model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg,
-            model.config.use_iiit5k, model.config.height, model.config.window_size, \
-            model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
-            1, model.config.batch_size, \
-            False, True, model.config.test_size, \
-            model.config.visualize, model.config.visualize_dir)
+        if model.config.use_baseline:
+          iterator_test = utils.data_iterator_baseline( \
+              model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg,
+              model.config.use_iiit5k, model.config.height, model.config.window_size, \
+              model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+              1, model.config.batch_size, \
+              False, True, model.config.test_size, \
+              model.config.visualize, model.config.visualize_dir)
+        else:
+          iterator_test = utils.data_iterator( \
+              model.config.dataset_dir_iiit5k, model.config.dataset_dir_vgg,
+              model.config.use_iiit5k, model.config.height, model.config.window_size, \
+              model.config.stride, model.config.max_timestep, model.config.jittering_percent, \
+              1, model.config.batch_size, \
+              False, True, model.config.test_size, \
+              model.config.visualize, model.config.visualize_dir)
 
-        for step_test, (inputs_test, labels_sparse_test, sequence_length_test,
+        for step_test, (inputs_test, labels_sparse_test, timesteps_test,
             partition_test, epoch_test) in enumerate(iterator_test):
 
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_sparse_test,
-                       model.sequence_length_placeholder: sequence_length_test,
-                       model.keep_prob_placeholder: 1.0,
-                       model.keep_prob_transformer_placeholder: 1.0,
+                       model.timesteps_placeholder: timesteps_test,
+                       model.dropout_placeholder: 0,
                        model.partition_placeholder: partition_test}
 
-          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth, model.x_trans],
+          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth],
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
           dists_test = np.concatenate((dists_test, ret_test[1]))
@@ -287,9 +344,8 @@ def main():
 
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_sparse_train,
-                    model.sequence_length_placeholder: sequence_length_train,
-                    model.keep_prob_placeholder: model.config.keep_prob,
-                    model.keep_prob_transformer_placeholder: model.config.keep_prob_transformer,
+                    model.timesteps_placeholder: timesteps_train,
+                    model.dropout_placeholder: 1,
                     model.partition_placeholder: partition_train}
 
       ret_train = session.run([model.train_op, model.loss],

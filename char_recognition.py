@@ -4,6 +4,7 @@ import json
 import math
 import numpy as np
 import os
+import stn
 import sys
 import tensorflow as tf
 import time
@@ -28,6 +29,8 @@ class Config():
       self.lr = json_data['lr']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
+
+      self.use_stn = json_data['use_stn']
 
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
@@ -55,9 +58,17 @@ class CHAR_Model():
 
   def add_model(self):
     with tf.variable_scope('CHAR') as scope:
-      logits, self.variables_CNN, self.saver_CNN = cnn.CNN( \
-          self.inputs_placeholder, self.dropout_placeholder, \
-          self.config.height, self.config.window_size)
+      if self.config.use_stn:
+        self.x_trans, self.variables_STN, self.saver_STN = stn.STN( \
+            self.inputs_placeholder, self.dropout_placeholder, \
+            self.config.height, self.config.window_size)
+        logits, self.variables_CNN, self.saver_CNN = cnn.CNN( \
+            self.x_trans, self.dropout_placeholder, \
+            self.config.height, self.config.window_size)
+      else:
+        logits, self.variables_CNN, self.saver_CNN = cnn.CNN( \
+            self.inputs_placeholder, self.dropout_placeholder, \
+            self.config.height, self.config.window_size)
 
       with tf.variable_scope('fc6') as scope:
         a_fc6 = tf.nn.relu(logits)
@@ -83,11 +94,20 @@ class CHAR_Model():
     return loss
 
   def add_training_op(self, loss):
-    train_op1 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
-        var_list=self.variables_CNN)
-    train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
-        var_list=self.variables_FC)
-    train_op = tf.group(train_op1, train_op2)
+    if self.config.use_stn:
+      train_op1 = tf.train.AdamOptimizer(0.1*self.config.lr).minimize(loss,
+          var_list=self.variables_STN)
+      train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+          var_list=self.variables_CNN)
+      train_op3 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+          var_list=self.variables_FC)
+      train_op = tf.group(train_op1, train_op2, train_op3)
+    else:
+      train_op1 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+          var_list=self.variables_CNN)
+      train_op2 = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
+          var_list=self.variables_FC)
+      train_op = tf.group(train_op1, train_op2)
 
     return train_op
 
@@ -111,7 +131,8 @@ def main():
     # restore previous session
     if model.config.load_char_ckpt or model.config.test_only:
       if os.path.isfile(model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt'):
-        #model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+        if model.config.use_stn:
+          model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
         model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
         model.saver_FC.restore(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
         logger.info('<-------------------->')
@@ -186,14 +207,16 @@ def main():
         # save three models: current model, model with the lowest loss, model
         # with the highest accuracy
         if cur_loss >= best_loss and cur_accuracy <= best_accuracy:
-          #model.saver_STN.save(session, model.config.ckpt_dir+'model_stn.ckpt')
+          if model.config.use_stn:
+            model.saver_STN.save(session, model.config.ckpt_dir+'model_stn.ckpt')
           model.saver_CNN.save(session, model.config.ckpt_dir+'model_cnn.ckpt')
           model.saver_FC.save(session, model.config.ckpt_dir+'model_fc.ckpt')
           logger.info('cnn model saved')
         if cur_loss < best_loss:
           best_loss = cur_loss
           corresponding_accuracy = cur_accuracy
-          #model.saver_STN.save(session, model.config.ckpt_dir+'model_best_loss_stn.ckpt')
+          if model.config.use_stn:
+            model.saver_STN.save(session, model.config.ckpt_dir+'model_best_loss_stn.ckpt')
           model.saver_CNN.save(session, model.config.ckpt_dir+'model_best_loss_cnn.ckpt')
           model.saver_FC.save(session, model.config.ckpt_dir+'model_best_loss_fc.ckpt')
           logger.info('best loss model saved')
@@ -202,7 +225,8 @@ def main():
         if cur_accuracy > best_accuracy:
           best_accuracy = cur_accuracy
           corresponding_loss = cur_loss
-          #model.saver_STN.save(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
+          if model.config.use_stn:
+            model.saver_STN.save(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
           model.saver_CNN.save(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
           model.saver_FC.save(session, model.config.ckpt_dir+'model_best_accuracy_fc.ckpt')
           logger.info('best accuracy model saved')

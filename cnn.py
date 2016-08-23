@@ -1,6 +1,5 @@
-import tensorflow as tf
 import numpy as np
-from spatial_transformer import transformer
+import tensorflow as tf
 
 
 def CNN(x, dropout, height, width):
@@ -11,7 +10,7 @@ def CNN(x, dropout, height, width):
   with tf.variable_scope('conv1') as scope:
     W_conv1 = tf.get_variable('Weight', [3, 3, 1, 64], initializer=tf.contrib.layers.xavier_initializer())
     b_conv1 = tf.get_variable('Bias', [64], initializer=tf.constant_initializer(0))
-    z_conv1 = tf.nn.conv2d(x, W_conv1, strides=[1, 1, 1, 1], padding='SAME') + b_conv1
+    z_conv1 = tf.nn.conv2d(x, W_conv1, strides=[1, 1, 1, 1], padding='SAME')+b_conv1
     mean_conv1, variance_conv1 = tf.nn.moments(z_conv1, [0, 1, 2], keep_dims=False)
     gamma_conv1 = tf.get_variable('Gamma', [64], initializer=tf.constant_initializer(1))
     beta_conv1 = tf.get_variable('Beta', [64], initializer=tf.constant_initializer(0))
@@ -24,7 +23,7 @@ def CNN(x, dropout, height, width):
   with tf.variable_scope('conv2') as scope:
     W_conv2 = tf.get_variable('Weight', [3, 3, 64, 128], initializer=tf.contrib.layers.xavier_initializer())
     b_conv2 = tf.get_variable('Bias', [128], initializer=tf.constant_initializer(0))
-    z_conv2 = tf.nn.conv2d(h_pool1_drop, W_conv2, strides=[1, 1, 1, 1], padding='SAME') + b_conv2
+    z_conv2 = tf.nn.conv2d(h_pool1_drop, W_conv2, strides=[1, 1, 1, 1], padding='SAME')+b_conv2
     mean_conv2, variance_conv2 = tf.nn.moments(z_conv2, [0, 1, 2], keep_dims=False)
     gamma_conv2 = tf.get_variable('Gamma', [128], initializer=tf.constant_initializer(1))
     beta_conv2 = tf.get_variable('Beta', [128], initializer=tf.constant_initializer(0))
@@ -37,7 +36,7 @@ def CNN(x, dropout, height, width):
   with tf.variable_scope('conv3') as scope:
     W_conv3 = tf.get_variable('Weight', [3, 3, 128, 256], initializer=tf.contrib.layers.xavier_initializer())
     b_conv3 = tf.get_variable('Bias', [256], initializer=tf.constant_initializer(0))
-    z_conv3 = tf.nn.conv2d(h_pool2_drop, W_conv3, strides=[1, 1, 1, 1], padding='SAME') + b_conv3
+    z_conv3 = tf.nn.conv2d(h_pool2_drop, W_conv3, strides=[1, 1, 1, 1], padding='SAME')+b_conv3
     mean_conv3, variance_conv3 = tf.nn.moments(z_conv3, [0, 1, 2], keep_dims=False)
     gamma_conv3 = tf.get_variable('Gamma', [256], initializer=tf.constant_initializer(1))
     beta_conv3 = tf.get_variable('Beta', [256], initializer=tf.constant_initializer(0))
@@ -50,7 +49,7 @@ def CNN(x, dropout, height, width):
   with tf.variable_scope('conv4') as scope:
     W_conv4 = tf.get_variable('Weight', [3, 3, 256, 512], initializer=tf.contrib.layers.xavier_initializer())
     b_conv4 = tf.get_variable('Bias', [512], initializer=tf.constant_initializer(0))
-    z_conv4 = tf.nn.conv2d(h_pool3_drop, W_conv4, strides=[1, 1, 1, 1], padding='SAME') + b_conv4
+    z_conv4 = tf.nn.conv2d(h_pool3_drop, W_conv4, strides=[1, 1, 1, 1], padding='SAME')+b_conv4
     mean_conv4, variance_conv4 = tf.nn.moments(z_conv4, [0, 1, 2], keep_dims=False)
     gamma_conv4 = tf.get_variable('Gamma', [512], initializer=tf.constant_initializer(1))
     beta_conv4 = tf.get_variable('Beta', [512], initializer=tf.constant_initializer(0))
