@@ -322,7 +322,7 @@ def main():
             cur_loss, len(losses_test))
         logger.info('average edit distance: %f (#batches = %d)',
             cur_dist, len(losses_test))
-        logger.info('character accuracy: %f', cur_char_accuracy)
+        logger.info('character error: %f', cur_char_accuracy)
         logger.info(stats)
         logger.info('<-------------------->')
 
