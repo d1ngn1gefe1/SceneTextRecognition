@@ -97,6 +97,10 @@ def indices2d2words(indices2d):
   return words
 
 
+def get_char_accuracy(groundtruth, dists):
+  return np.sum(dists)/float(np.sum(groundtruth != 36))
+
+
 def save_imgs(imgs, dir, name):
   if not os.path.exists(dir):
     os.makedirs(dir)

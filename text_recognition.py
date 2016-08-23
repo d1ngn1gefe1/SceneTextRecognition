@@ -220,7 +220,7 @@ def main():
           model.saver_STN.restore(session, model.config.ckpt_dir+'model_best_accuracy_stn.ckpt')
         model.saver_CNN.restore(session, model.config.ckpt_dir+'model_best_accuracy_cnn.ckpt')
         logger.info('char model restored')
-    elif model.config.load_text_ckpt or model.config.test_only:
+    elif model.config.load_text_ckpt:
       model.saver.restore(session, model.config.ckpt_dir+'model_best_loss_full.ckpt')
       logger.info('full model restored')
       if os.path.isfile(model.config.ckpt_dir+'text_best_loss.npy'):
@@ -314,13 +314,15 @@ def main():
 
         cur_loss = np.mean(losses_test)
         cur_dist = np.mean(dists_test)
+        cur_char_accuracy = utils.get_char_accuracy(ret_test[3], ret_test[1])
         stats = np.bincount(dists_test.astype(int))
 
         logger.info('<-------------------->')
         logger.info('average test loss: %f (#batches = %d)',
             cur_loss, len(losses_test))
         logger.info('average edit distance: %f (#batches = %d)',
-            cur_dist, len(dists_test))
+            cur_dist, len(losses_test))
+        logger.info('character accuracy: %f', cur_char_accuracy)
         logger.info(stats)
         logger.info('<-------------------->')
 
