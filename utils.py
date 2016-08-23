@@ -387,10 +387,10 @@ def data_iterator_char(dataset_dir_iiit5k, height, window_size, \
         char_embeds.append(char_embed)
 
         if is_train and visualize and i < 5 and j < 5:
-          cv2.imwrite(visualize_dir+str(i)+'_'+str(j)+'_'+str(k)+'_'+word[k]+'.jpg', char_embed)
+          cv2.imwrite(visualize_dir+str(i)+'_'+str(j)+'_'+str(k)+'_'+word[k]+'.jpg', char_img)
 
-      inputs = np.stack(char_imgs)
-      labels = np.array(char_embeds)
-      epoch = i*batch_size/num_examples
+    inputs = np.stack(char_imgs)
+    labels = np.array(char_embeds)
+    epoch = i*batch_size/num_examples
 
-      yield (inputs, labels, epoch)
+    yield (inputs, labels, epoch)

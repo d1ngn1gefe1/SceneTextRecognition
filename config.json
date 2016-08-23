@@ -27,9 +27,9 @@
   "text_load_char_ckpt": false,
   "ckpt_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/checkpoint/",
   "test_only": false,
-  "test_and_save_every_n_steps": 128,
+  "test_and_save_every_n_steps": 1280,
   "test_size": 6400,
-  "visualize": false,
+  "visualize": true,
   "visualize_dir": "/home/local/ANT/zelunluo/SceneTextRecognition/visualize/",
   "print_pred": false,
   "use_baseline": false

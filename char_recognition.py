@@ -78,8 +78,6 @@ class CHAR_Model():
     return logits
 
   def add_loss_op(self, logits):
-    print logits
-    print self.labels_placeholder
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits,
         self.labels_placeholder)
     loss = tf.reduce_mean(losses)
@@ -152,21 +150,22 @@ def main():
     step_epoch = 0
 
     # each step corresponds to one batch
-    for step, (inputs_train, labels_train, epoch_train) in \
+    for step_train, (inputs_train, labels_train, epoch_train) in \
         enumerate(iterator_train):
 
       # test & save model
-      if step%model.config.test_and_save_every_n_steps == 0:
+      if step_train%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
         accuracies_test = []
         iterator_test = utils.data_iterator_char(model.config.dataset_dir_iiit5k, \
             model.config.height, model.config.window_size, \
-            model.config.num_epochs, model.config.batch_size, \
+            1, model.config.batch_size, \
             model.config.embed_size, model.config.jittering_percent, False, \
             model.config.visualize, model.config.visualize_dir)
 
         for step_test, (inputs_test, labels_test, epoch_test) in \
             enumerate(iterator_test):
+
           feed_test = {model.inputs_placeholder: inputs_test,
                        model.labels_placeholder: labels_test,
                        model.keep_prob_placeholder: 1.0,
@@ -179,11 +178,11 @@ def main():
               ret_test[1].shape[0])
 
           # visualize the STN results
-          if model.config.visualize and step_test < 10:
-            utils.save_imgs(inputs_test, model.config.visualize_dir,
-                'original'+str(step_test)+'-')
-            utils.save_imgs(ret_test[2], model.config.visualize_dir,
-                'trans'+str(step_test)+'-')
+        #   if model.config.visualize and step_test < 10:
+        #     utils.save_imgs(inputs_test, model.config.visualize_dir,
+        #         'original'+str(step_test)+'-')
+        #     utils.save_imgs(ret_test[2], model.config.visualize_dir,
+        #         'trans'+str(step_test)+'-')
 
         cur_loss = np.mean(losses_test)
         cur_accuracy = np.mean(accuracies_test)
@@ -230,11 +229,11 @@ def main():
 
       # new epoch, calculate average training loss and accuracy from last epoch
       if epoch_train != cur_epoch:
-        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step,
+        logger.info('training loss in epoch %d, step %d: %f', cur_epoch, step_train,
             np.mean(losses_train[step_epoch:]))
-        logger.info('training accuracy in epoch %d, step %d: %f', cur_epoch, step,
+        logger.info('training accuracy in epoch %d, step %d: %f', cur_epoch, step_train,
             np.mean(accuracies_train[step_epoch:]))
-        step_epoch = step
+        step_epoch = step_train
         cur_epoch = epoch_train
 
       # train
@@ -248,7 +247,6 @@ def main():
       losses_train.append(ret_train[1])
       accuracies_train.append(float(np.sum(ret_train[2] == 0))/\
           ret_train[2].shape[0])
-      print 'good'
 
 if __name__ == '__main__':
   main()
