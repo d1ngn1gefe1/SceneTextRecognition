@@ -233,8 +233,8 @@ def data_iterator(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
     partition = np.repeat(partition, timesteps)
     epoch = i*batch_size/num_examples
 
-    if num_bad_examples > 0:
-      print 'num_bad_examples: ', num_bad_examples, '/', batch_size
+    # if num_bad_examples > 0:
+    #   print 'num_bad_examples: ', num_bad_examples, '/', batch_size
     yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 
@@ -322,8 +322,8 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
     partition = np.repeat(partition, timesteps)
     epoch = i*batch_size/num_examples
 
-    if num_bad_examples > 0:
-      print 'num_bad_examples: ', num_bad_examples, '/', batch_size
+    # if num_bad_examples > 0:
+    #   print 'num_bad_examples: ', num_bad_examples, '/', batch_size
     yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 
