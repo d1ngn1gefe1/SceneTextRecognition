@@ -14,6 +14,7 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
+
       self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
       self.dataset_dir_vgg = json_data['dataset_dir_vgg']
       self.use_iiit5k = json_data['use_iiit5k']
@@ -49,6 +50,7 @@ class Config():
       self.print_pred = json_data['print_pred']
       self.use_baseline = json_data['use_baseline']
 
+
 class TEXT_Model():
   def __init__(self, config):
     self.config = config
@@ -61,7 +63,7 @@ class TEXT_Model():
 
   def add_placeholders(self):
     self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[self.config.batch_size, self.config.height, self.config.window_size, 1])
+        shape=[None, self.config.height, self.config.window_size, 1])
     self.labels_placeholder = tf.sparse_placeholder(tf.int32)
     self.sequence_length_placeholder = tf.placeholder(tf.int32,
         shape=[self.config.batch_size])

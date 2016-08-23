@@ -14,76 +14,51 @@ class Config():
   def __init__(self):
     with open('config.json', 'r') as json_file:
       json_data = json.load(json_file)
+
       self.dataset_dir_iiit5k = json_data['dataset_dir_iiit5k']
+
       self.height = json_data['height']
       self.window_size = json_data['window_size']
-      self.depth = json_data['depth']
+      self.jittering_percent = json_data['jittering_percent']
       self.embed_size = json_data['embed_size']
-      self.jittering_size = int(json_data['jittering_percent']*self.height)
+
       self.lr = json_data['lr']
-      self.keep_prob = json_data['keep_prob']
-      self.keep_prob_transformer = json_data['keep_prob_transformer']
       self.num_epochs = json_data['num_epochs']
       self.batch_size = json_data['batch_size']
+
+      self.keep_prob = json_data['keep_prob']
+      self.keep_prob_transformer = json_data['keep_prob_transformer']
+
       self.debug = json_data['debug']
       self.debug_size = json_data['debug_size']
       self.load_char_ckpt = json_data['load_char_ckpt']
       self.ckpt_dir = json_data['ckpt_dir']
       self.test_only = json_data['test_only']
-      self.test_and_save_every_n_steps = \
-          json_data['test_and_save_every_n_steps']
+      self.test_and_save_every_n_steps = json_data['test_and_save_every_n_steps']
       self.visualize = json_data['visualize']
       self.visualize_dir = json_data['visualize_dir']
+
 
 class CHAR_Model():
   def __init__(self, config):
     self.config = config
-    self.load_data(self.config.debug, self.config.test_only)
     self.add_placeholders()
     self.logits = self.add_model()
     self.loss = self.add_loss_op(self.logits)
     self.train_op = self.add_training_op(self.loss)
 
-  def load_data(self, debug=False, test_only=False):
-    filename_test = os.path.join(self.config.dataset_dir_iiit5k, 'test.hdf5')
-    f_test = h5py.File(filename_test, 'r')
-    self.char_imgs_test = np.array(f_test.get('char_imgs'), dtype=np.uint8)
-    self.chars_embed_test = np.array(f_test.get('chars_embed'), dtype=np.uint8)
-    logger.info('loading test data (%d examples)', self.char_imgs_test.shape[0])
-    f_test.close()
-
-    filename_train = os.path.join(self.config.dataset_dir_iiit5k, 'train.hdf5')
-    f_train = h5py.File(filename_train, 'r')
-    self.char_imgs_train = np.array(f_train.get('char_imgs'), dtype=np.uint8)
-    self.chars_embed_train = np.array(f_train.get('chars_embed'),
-        dtype=np.uint8)
-    logger.info('loading training data (%d characters)',
-        self.char_imgs_train.shape[0])
-    f_train.close()
-
-    if self.config.debug:
-      self.char_imgs_train = self.char_imgs_train[:self.config.debug_size]
-      self.chars_embed_train = self.chars_embed_train[:self.config.debug_size]
-
   def add_placeholders(self):
-    # batch_size x height x width x depth
     self.inputs_placeholder = tf.placeholder(tf.float32,
-        shape=[self.config.batch_size, self.config.height,
-        self.config.window_size, self.config.depth])
-
-    # batch_size x embed_size
-    self.labels_placeholder = tf.placeholder(tf.int64,
-        shape=[self.config.batch_size])
-
-    # float
+        shape=[None, self.config.height, self.config.window_size, 1])
+    self.labels_placeholder = tf.placeholder(tf.int64)
     self.keep_prob_placeholder = tf.placeholder(tf.float32)
     self.keep_prob_transformer_placeholder = tf.placeholder(tf.float32)
 
   def add_model(self):
     with tf.variable_scope('CHAR') as scope:
       logits, self.variables_STN, self.variables_CNN, self.saver_STN, \
-          self.saver_CNN, self.x_trans = cnn.CNN(self.inputs_placeholder,
-          self.config.height, self.config.window_size, self.config.depth,
+          self.saver_CNN, self.x_trans = cnn.CNN(self.inputs_placeholder, \
+          self.config.height, self.config.window_size, \
           self.keep_prob_placeholder, self.keep_prob_transformer_placeholder)
 
       with tf.variable_scope('fc1') as scope:
@@ -95,7 +70,7 @@ class CHAR_Model():
             initializer=tf.contrib.layers.xavier_initializer())
         b_fc2 = tf.get_variable('Bias', [self.config.embed_size],
             initializer=tf.constant_initializer(0))
-        logits = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+        logits = tf.matmul(h_fc1_drop, W_fc2)+b_fc2
 
       self.variables_FC = [W_fc2, b_fc2]
       self.saver_FC = tf.train.Saver({'W_fc2': W_fc2, 'b_fc2': b_fc2})
@@ -154,7 +129,7 @@ def main():
         best_loss = np.load(model.config.ckpt_dir+'char_best_loss.npy')
         logger.info('best loss: '+str(best_loss))
       if os.path.isfile(model.config.ckpt_dir+'char_corr_accuracy.npy'):
-        corresponding_accuracy = np.load(model.config.ckpt_dir+ \
+        corresponding_accuracy = np.load(model.config.ckpt_dir+\
             'char_corr_accuracy.npy')
         logger.info('corresponding accuracy: '+str(corresponding_accuracy))
       if os.path.isfile(model.config.ckpt_dir+'char_best_accuracy.npy'):
@@ -165,12 +140,11 @@ def main():
         logger.info('corresponding loss: '+str(corresponding_loss))
       logger.info('<-------------------->')
 
-    iterator_train = utils.data_iterator_char(model.char_imgs_train,
-        model.chars_embed_train, model.config.num_epochs,
-        model.config.batch_size, model.config.embed_size,
-        model.config.jittering_size, False)
-
-    num_chars = model.char_imgs_train.shape[0]
+    iterator_train = utils.data_iterator_char(model.config.dataset_dir_iiit5k, \
+        model.config.height, model.config.window_size, \
+        model.config.num_epochs, model.config.batch_size, \
+        model.config.embed_size, model.config.jittering_percent, True, \
+        model.config.visualize, model.config.visualize_dir)
 
     losses_train = []
     accuracies_train = []
@@ -185,9 +159,11 @@ def main():
       if step%model.config.test_and_save_every_n_steps == 0:
         losses_test = []
         accuracies_test = []
-        iterator_test = utils.data_iterator_char(model.char_imgs_test,
-            model.chars_embed_test, 1, model.config.batch_size,
-            model.config.embed_size, model.config.jittering_size, True)
+        iterator_test = utils.data_iterator_char(model.config.dataset_dir_iiit5k, \
+            model.config.height, model.config.window_size, \
+            model.config.num_epochs, model.config.batch_size, \
+            model.config.embed_size, model.config.jittering_percent, False, \
+            model.config.visualize, model.config.visualize_dir)
 
         for step_test, (inputs_test, labels_test, epoch_test) in \
             enumerate(iterator_test):
@@ -265,14 +241,14 @@ def main():
       feed_train = {model.inputs_placeholder: inputs_train,
                     model.labels_placeholder: labels_train,
                     model.keep_prob_placeholder: model.config.keep_prob,
-                    model.keep_prob_transformer_placeholder: \
-                        model.config.keep_prob_transformer}
+                    model.keep_prob_transformer_placeholder: model.config.keep_prob_transformer}
 
       ret_train = session.run([model.train_op, model.loss, model.diff],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])
       accuracies_train.append(float(np.sum(ret_train[2] == 0))/\
           ret_train[2].shape[0])
+      print 'good'
 
 if __name__ == '__main__':
   main()
