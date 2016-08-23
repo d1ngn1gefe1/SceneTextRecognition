@@ -176,7 +176,7 @@ def data_iterator(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
       # cur_timestep = i+1
       cur_timestep = int(math.ceil(w_jittering/float(stride)))+1
       if cur_timestep > max_timestep or cur_timestep <= len(word):
-        logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
+        #logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
         num_bad_examples += 1
         continue
       timesteps.append(cur_timestep)
@@ -229,6 +229,8 @@ def data_iterator(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
     partition = np.repeat(partition, timesteps)
     epoch = i*batch_size/num_examples
 
+    if num_bad_examples > 0:
+      print 'num_bad_examples: ', num_bad_examples, '/', batch_size
     yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 
@@ -291,7 +293,7 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
       # timestep
       cur_timestep = w
       if cur_timestep > max_timestep or cur_timestep <= len(word):
-        logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
+        #logger.warning('timestep not valid: %d, %d, %d', cur_timestep, max_timestep, len(word))
         num_bad_examples += 1
         continue
       timesteps.append(cur_timestep)
@@ -316,6 +318,8 @@ def data_iterator_baseline(dataset_dir_iiit5k, dataset_dir_vgg, use_iiit5k,
     partition = np.repeat(partition, timesteps)
     epoch = i*batch_size/num_examples
 
+    if num_bad_examples > 0:
+      print 'num_bad_examples: ', num_bad_examples, '/', batch_size
     yield (inputs, labels_sparse, timesteps, partition, epoch)
 
 

@@ -24,6 +24,7 @@ class Config():
       self.height = json_data['height']
       self.window_size = json_data['window_size']
       self.stride = json_data['stride']
+      # iiitk5: 75 sliding windows, 586 pixels
       self.max_timestep = json_data['max_timestep']
       self.jittering_percent = json_data['jittering_percent']
       self.embed_size = json_data['embed_size']
@@ -85,9 +86,9 @@ class TEXT_Model():
         data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
 
         lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(self.config.height, state_is_tuple=True)
-        stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer, state_is_tuple=True)
+        stacked_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_fw]*self.config.num_lstm_layer+6, state_is_tuple=True)
         lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(self.config.height, state_is_tuple=True)
-        stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer, state_is_tuple=True)
+        stacked_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([lstm_cell_bw]*self.config.num_lstm_layer+6, state_is_tuple=True)
         rnn_outputs, _, _ = tf.nn.bidirectional_rnn(stacked_lstm_cell_fw,
             stacked_lstm_cell_bw, data_rnn,
             sequence_length=self.timesteps_placeholder, dtype=tf.float32)

@@ -8,7 +8,7 @@
   "height": 32,
   "window_size": 32,
   "stride": 8,
-  "max_timestep": 250,
+  "max_timestep": 35,
   "jittering_percent": 0.15,
   "embed_size": 37,
 
@@ -16,7 +16,6 @@
   "num_epochs": 10000,
   "batch_size": 128,
 
-  "lstm_size": 128,
   "num_lstm_layer": 3,
   "use_stn": true,
 
@@ -33,6 +32,6 @@
   "visualize": false,
   "visualize_dir_": "/home/local/ANT/zelunluo/SceneTextRecognition/visualize/",
   "visualize_dir": "/home/alan/research/SceneTextRecognition/visualize/",
-  "print_pred": false,
-  "use_baseline": true
+  "print_pred": true,
+  "use_baseline": false
 }
