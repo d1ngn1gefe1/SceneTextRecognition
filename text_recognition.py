@@ -312,7 +312,8 @@ def main():
         #     utils.save_imgs(ret_test[4], model.config.visualize_dir,
         #         'trans'+str(step_test)+'-')
 
-        cur_loss = np.mean(losses_test)
+        losses_test = np.array(losses_test)
+        cur_loss = np.mean(losses_test[np.isfinite(losses_test)])
         cur_dist = np.mean(dists_test)
         cur_char_accuracy = utils.get_char_accuracy(ret_test[3], ret_test[1])
         stats = np.bincount(dists_test.astype(int))
