@@ -1,12 +1,23 @@
 import numpy as np
 import tensorflow as tf
 
-
+"""
+  Input:
+    x: sum(time) x height x window_size x 1
+    dropout: dropout for training = 1, dropour for testing = 0
+             the actually dropout is calculated based on this multiplier
+    height: 32 by default (you might need to change the architecture if you change the dimension)
+    width: 32 by default (you might need to change the architecture if you change the dimension)
+  Output:
+    logits: image features of size 128, fc6 output
+    variables: variable for CNN, return so that we can set the learning rate
+    saver: saver for CNN, return so that we can save CNN variables separately
+"""
 def CNN(x, dropout, height, width):
 
   eps = 1e-5
 
-  # input: 32 x 32 x 1
+  # input: 32 x 32 x 1 (default)
   with tf.variable_scope('conv1') as scope:
     W_conv1 = tf.get_variable('Weight', [3, 3, 1, 64], initializer=tf.contrib.layers.xavier_initializer())
     b_conv1 = tf.get_variable('Bias', [64], initializer=tf.constant_initializer(0))
@@ -19,7 +30,7 @@ def CNN(x, dropout, height, width):
     h_pool1 = tf.nn.max_pool(a_conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_pool1_drop = tf.nn.dropout(h_pool1, 1-dropout*0.1)
 
-  # input: 16 x 16 x 64
+  # input: 16 x 16 x 64 (default)
   with tf.variable_scope('conv2') as scope:
     W_conv2 = tf.get_variable('Weight', [3, 3, 64, 128], initializer=tf.contrib.layers.xavier_initializer())
     b_conv2 = tf.get_variable('Bias', [128], initializer=tf.constant_initializer(0))
@@ -32,7 +43,7 @@ def CNN(x, dropout, height, width):
     h_pool2 = tf.nn.max_pool(a_conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_pool2_drop = tf.nn.dropout(h_pool2, 1-dropout*0.1)
 
-  # input: 8 x 8 x 128
+  # input: 8 x 8 x 128 (default)
   with tf.variable_scope('conv3') as scope:
     W_conv3 = tf.get_variable('Weight', [3, 3, 128, 256], initializer=tf.contrib.layers.xavier_initializer())
     b_conv3 = tf.get_variable('Bias', [256], initializer=tf.constant_initializer(0))
@@ -45,7 +56,7 @@ def CNN(x, dropout, height, width):
     h_pool3 = tf.nn.max_pool(a_conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_pool3_drop = tf.nn.dropout(h_pool3, 1-dropout*0.2)
 
-  # input: 4 x 4 x 256
+  # input: 4 x 4 x 256 (default)
   with tf.variable_scope('conv4') as scope:
     W_conv4 = tf.get_variable('Weight', [3, 3, 256, 512], initializer=tf.contrib.layers.xavier_initializer())
     b_conv4 = tf.get_variable('Bias', [512], initializer=tf.constant_initializer(0))
@@ -57,16 +68,16 @@ def CNN(x, dropout, height, width):
     a_conv4 = tf.nn.relu(bn_conv4)
     h_pool4 = tf.nn.max_pool(a_conv4, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_pool4_drop = tf.nn.dropout(h_pool4, 1-dropout*0.2)
-    h_pool4_drop_flat = tf.reshape(h_pool4_drop, [-1, 2*2*512])
+    h_pool4_drop_flat = tf.reshape(h_pool4_drop, [-1, height/16*width/16*512])
 
-  # input: 2 x 2 x 512
+  # input: 2 x 2 x 512 (default)
   with tf.variable_scope('fc5') as scope:
-    W_fc5 = tf.get_variable('Weight', [2*2*512, 512], initializer=tf.contrib.layers.xavier_initializer())
+    W_fc5 = tf.get_variable('Weight', [height/16*width/16*512, 512], initializer=tf.contrib.layers.xavier_initializer())
     b_fc5 = tf.get_variable('Bias', [512], initializer=tf.constant_initializer(0))
     a_fc5 = tf.nn.relu(tf.matmul(h_pool4_drop_flat, W_fc5)+b_fc5)
     a_fc5_drop = tf.nn.dropout(a_fc5, 1-dropout*0.5)
 
-  # input: 1 x 1 x 512
+  # input: 1 x 1 x 512 (default)
   with tf.variable_scope('fc6') as scope:
     W_fc6 = tf.get_variable('Weight', [512, 128], initializer=tf.contrib.layers.xavier_initializer())
     b_fc6 = tf.get_variable('Bias', [128], initializer=tf.constant_initializer(0))

@@ -48,6 +48,7 @@ class Config():
       self.visualize = json_data['visualize']
       self.visualize_dir = json_data['visualize_dir']
       self.print_pred = json_data['print_pred']
+      # baseline: no stn, no cnn
       self.use_baseline = json_data['use_baseline']
 
 
@@ -112,11 +113,15 @@ class TEXT_Model():
           self.variables_CHAR = variables_CNN
 
         # data_rnn: a length max_timestep list of shape batch_size x cnn_feature_size (128)
+        #output of cnn, logits, is packed as [1][23][456], but lstm expect
+        #[100][230]456 -> need to identify the original length to split
+        # partitions is labeled list of membership [122333]
         data_rnn = tf.dynamic_partition(logits, self.partition_placeholder, self.config.batch_size)
         for i in range(len(data_rnn)):
           data_rnn[i] = tf.concat(0, [data_rnn[i], tf.zeros([self.config.max_timestep-self.timesteps_placeholder[i], 128])])
+        #pack list into a single tensor
         data_rnn = tf.pack(data_rnn, 0)
-        data_rnn = tf.transpose(data_rnn, [1, 0, 2])
+        data_rnn = tf.transpose(data_rnn, [1, 0, 2]) # to fit rnn shape requirement
         data_rnn = tf.reshape(data_rnn, [-1, 128])
         data_rnn = tf.split(0, self.config.max_timestep, data_rnn)
 
@@ -287,13 +292,14 @@ def main():
         for step_test, (inputs_test, labels_sparse_test, timesteps_test,
             partition_test, epoch_test) in enumerate(iterator_test):
 
-          feed_test = {model.inputs_placeholder: inputs_test,
-                       model.labels_placeholder: labels_sparse_test,
+          feed_test = {model.inputs_placeholder: # tensor
+                                                 inputs_test, # numpy array
+                       model.labels_placeholder: labels_sparse_test, #tuple of numpy array
                        model.timesteps_placeholder: timesteps_test,
                        model.dropout_placeholder: 0,
                        model.partition_placeholder: partition_test}
 
-          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth],
+          ret_test = session.run([model.loss, model.dists, model.pred, model.groundtruth], #desired output nodes
               feed_dict=feed_test)
           losses_test.append(ret_test[0])
           dists_test = np.concatenate((dists_test, ret_test[1]))
@@ -351,7 +357,7 @@ def main():
                     model.timesteps_placeholder: timesteps_train,
                     model.dropout_placeholder: 1,
                     model.partition_placeholder: partition_train}
-
+      # evaluate optimizer to train the graph --- specifying loss is only for the purpose extracting
       ret_train = session.run([model.train_op, model.loss],
           feed_dict=feed_train)
       losses_train.append(ret_train[1])

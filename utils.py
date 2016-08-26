@@ -40,15 +40,18 @@ def dense2sparse(labels):
   return (x_ix, x_val, x_shape)
 
 
-# return: an integer
-def char2index(char):
-  """Convert a character into an index (case insentitive)
-    index 0 - 9: '0' - '9'
-    index 10 - 35: 'A' & 'a' - 'Z' & 'z'
+"""
+  Convert a character into an index (case insentitive)
+  Input: a string of length 1 (character)
+  Output: an int
 
-    ord('0') = 48, ord('9') = 57,
-    ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
-  """
+  index 0 - 9: '0' - '9'
+  index 10 - 35: 'A' & 'a' - 'Z' & 'z'
+
+  ord('0') = 48, ord('9') = 57,
+  ord('A') = 65, ord('Z') = 90, ord('a') = 97, ord('z') = 122
+"""
+def char2index(char):
   if ord(char) >= ord('0') and ord(char) <= ord('9'):
     return ord(char)-ord('0')
   elif ord(char) >= ord('A') and ord(char) <= ord('Z'):
@@ -60,7 +63,11 @@ def char2index(char):
     return -1
 
 
-# return: a string
+"""
+  Convert an index into a character (case insentitive)
+  Input: an int
+  Output: a string of length 1 (character)
+"""
 def index2char(index):
   if index >= 0 and index <= 9:
     return chr(ord('0')+index)

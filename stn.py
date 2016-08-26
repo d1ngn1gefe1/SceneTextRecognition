@@ -2,12 +2,23 @@ import numpy as np
 from spatial_transformer import transformer
 import tensorflow as tf
 
-
+"""
+  Input:
+    x: sum(time) x height x window_size x 1
+    dropout: dropout for training = 1, dropour for testing = 0
+             the actually dropout is calculated based on this multiplier
+    height: 32 by default (you might need to change the architecture if you change the dimension)
+    width: 32 by default (you might need to change the architecture if you change the dimension)
+  Output:
+    x_trans: the corrected input, after affine transform, same size as x
+    variables: variable for STN, return so that we can set the learning rate
+    saver: saver for STN, return so that we can save STN variables separately
+"""
 def STN(x, dropout, height, width):
 
   eps = 1e-5
 
-  # input: 32 x 32 x 1
+  # input: 32 x 32 x 1 (default)
   with tf.variable_scope('loc-conv1') as scope:
     W_loc_conv1 = tf.get_variable('Weight', [3, 3, 1, 64], initializer=tf.contrib.layers.xavier_initializer())
     b_loc_conv1 = tf.get_variable('Bias', [64], initializer=tf.constant_initializer(0))
@@ -20,7 +31,7 @@ def STN(x, dropout, height, width):
     h_loc_pool1 = tf.nn.max_pool(a_loc_conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_loc_pool1_drop = tf.nn.dropout(h_loc_pool1, 1-dropout*0.1)
 
-  # input: 16 x 16 x 64
+  # input: 16 x 16 x 64 (default)
   with tf.variable_scope('loc-conv2') as scope:
     W_loc_conv2 = tf.get_variable('Weight', [3, 3, 64, 128], initializer=tf.contrib.layers.xavier_initializer())
     b_loc_conv2 = tf.get_variable('Bias', [128], initializer=tf.constant_initializer(0))
@@ -33,7 +44,7 @@ def STN(x, dropout, height, width):
     h_loc_pool2 = tf.nn.max_pool(a_loc_conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_loc_pool2_drop = tf.nn.dropout(h_loc_pool2, 1-dropout*0.1)
 
-  # input: 8 x 8 x 128
+  # input: 8 x 8 x 128 (default)
   with tf.variable_scope('loc-conv3') as scope:
     W_loc_conv3 = tf.get_variable('Weight', [3, 3, 128, 256], initializer=tf.contrib.layers.xavier_initializer())
     b_loc_conv3 = tf.get_variable('Bias', [256], initializer=tf.constant_initializer(0))
@@ -45,23 +56,23 @@ def STN(x, dropout, height, width):
     a_loc_conv3 = tf.nn.relu(bn_loc_conv3)
     h_loc_pool3 = tf.nn.max_pool(a_loc_conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     h_loc_pool3_drop = tf.nn.dropout(h_loc_pool3, 1-dropout*0.2)
-    h_loc_pool3_drop_flat = tf.reshape(h_loc_pool3_drop, [-1, 4*4*256])
+    h_loc_pool3_drop_flat = tf.reshape(h_loc_pool3_drop, [-1, height/8*width/8*256])
 
-  # input: 4 x 4 x 256
+  # input: 4 x 4 x 256 (default)
   with tf.variable_scope('loc-fc4') as scope:
-    W_loc_fc4 = tf.get_variable('Weight', [4*4*256, 512], initializer=tf.constant_initializer(0))
+    W_loc_fc4 = tf.get_variable('Weight', [height/8*width/8*256, 512], initializer=tf.constant_initializer(0))
     b_loc_fc4 = tf.get_variable('Bias', [512], initializer=tf.constant_initializer(0))
     h_loc_fc4 = tf.nn.relu(tf.matmul(h_loc_pool3_drop_flat, W_loc_fc4)+b_loc_fc4)
     h_loc_fc4_drop = tf.nn.dropout(h_loc_fc4, 1-dropout*0.5)
 
-  # input: 1 x 1 x 512
+  # input: 1 x 1 x 512 (default)
   with tf.variable_scope('loc-fc5') as scope:
     W_loc_fc5 = tf.get_variable('Weight', [512, 64], initializer=tf.constant_initializer(0))
     b_loc_fc5 = tf.get_variable('Bias', [64], initializer=tf.constant_initializer(0))
     h_loc_fc5 = tf.nn.relu(tf.matmul(h_loc_fc4_drop, W_loc_fc5)+b_loc_fc5)
     h_loc_fc5_drop = tf.nn.dropout(h_loc_fc5, 1-dropout*0.5)
 
-  # input: 1 x 1 x 64
+  # input: 1 x 1 x 64 (default)
   with tf.variable_scope('loc-fc6') as scope:
     W_loc_fc6 = tf.get_variable('Weight', [64, 6], initializer=tf.constant_initializer(0))
     initial = np.array([[1., 0, 0], [0, 1., 0]])
